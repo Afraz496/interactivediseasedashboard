@@ -71,9 +71,6 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
     color: var(--text) !important;
 }
 
-.app-shell {
-    background: transparent;
-}
 .hero {
     display:flex;
     justify-content:space-between;
@@ -108,6 +105,7 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
     font-size: 1rem;
     white-space: nowrap;
 }
+
 .metric-grid {
     display:grid;
     grid-template-columns: repeat(4, minmax(0,1fr));
@@ -139,6 +137,7 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
     color: var(--muted) !important;
     line-height: 1.4;
 }
+
 .section-title {
     font-size: 0.93rem;
     text-transform: uppercase;
@@ -156,6 +155,7 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
     height: 1px;
     background: rgba(72,125,193,0.38);
 }
+
 .panel {
     background: linear-gradient(180deg, rgba(10,29,63,0.98), rgba(8,24,51,0.98));
     border:1px solid rgba(72,125,193,0.42);
@@ -167,9 +167,10 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
     font-size: 0.95rem;
     line-height: 1.5;
 }
+
 .traffic-grid {
     display:grid;
-    grid-template-columns: repeat(5, minmax(0,1fr));
+    grid-template-columns: repeat(4, minmax(0,1fr));
     gap:10px;
 }
 .traffic-card {
@@ -196,6 +197,7 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
     font-size: 0.88rem;
     color: var(--muted) !important;
 }
+
 .compare-strip {
     display:grid;
     grid-template-columns: 1fr 1fr;
@@ -233,6 +235,7 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
     font-weight: 900;
     color: var(--text) !important;
 }
+
 .banner-note {
     background: linear-gradient(180deg, rgba(13,38,79,0.96), rgba(10,29,63,0.96));
     border: 1px solid rgba(72,125,193,0.42);
@@ -264,6 +267,7 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
 }
 .summary-row .k {color: var(--muted) !important;}
 .summary-row .v {font-weight: 900;}
+
 [data-testid="stButton"] > button,
 [data-testid="stDownloadButton"] > button,
 div[data-testid="stFormSubmitButton"] > button {
@@ -311,9 +315,7 @@ div[data-testid="stFormSubmitButton"] > button:hover {
 .stCaption {
     color: var(--muted) !important;
 }
-[data-testid="stSidebar"] {
-    background: var(--panel-3);
-}
+
 @media (max-width: 1100px) {
     .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
     .compare-strip { grid-template-columns: 1fr; }
@@ -593,32 +595,25 @@ def driver_table(consensus: dict) -> pd.DataFrame:
 
 
 # ---------------------------------------------------------
-# Spatial helpers
+# Metro hospitals only
 # ---------------------------------------------------------
-METRO_ZONES = pd.DataFrame(
+METRO_HOSPITALS = pd.DataFrame(
     {
-        "zone": [
-            "Vancouver",
-            "Surrey",
-            "Burnaby",
-            "Richmond",
-            "Coquitlam",
-            "North Vancouver",
-            "New Westminster",
-            "Delta",
+        "hospital": [
+            "Vancouver General",
+            "BC Children's",
+            "St. Paul's",
+            "Burnaby Hospital",
+            "Royal Columbian",
+            "Surrey Memorial",
+            "Richmond Hospital",
+            "Lions Gate",
+            "Eagle Ridge",
+            "Peace Arch",
         ],
-        "lat": [49.2827, 49.1913, 49.2488, 49.1666, 49.2838, 49.3200, 49.2057, 49.0847],
-        "lon": [-123.1207, -122.8490, -122.9805, -123.1336, -122.7932, -123.0720, -122.9110, -123.0580],
-        "weight": [1.35, 1.15, 1.00, 0.92, 0.95, 0.82, 0.74, 0.70],
-    }
-)
-
-BC_REGIONS = pd.DataFrame(
-    {
-        "region": ["Lower Mainland", "Fraser Valley", "Vancouver Island", "Interior", "North"],
-        "lat": [49.18, 49.10, 49.68, 50.90, 54.20],
-        "lon": [-122.95, -121.90, -124.70, -119.50, -125.00],
-        "weight": [1.00, 0.62, 0.55, 0.75, 0.38],
+        "lat": [49.2612, 49.2648, 49.2806, 49.2500, 49.2216, 49.1794, 49.1705, 49.3156, 49.2768, 49.0286],
+        "lon": [-123.1237, -123.1237, -123.1242, -122.9693, -122.8901, -122.8426, -123.1367, -123.0698, -122.7929, -122.8023],
+        "weight": [1.18, 0.88, 0.95, 0.86, 1.02, 1.15, 0.78, 0.72, 0.68, 0.62],
     }
 )
 
@@ -645,20 +640,15 @@ def spread_light_color(label: str) -> str:
     return {"Green": "#22c55e", "Yellow": "#f59e0b", "Red": "#ef4444"}.get(label, "#22c55e")
 
 
-def provincial_lights(cur_total: int, multiplier: float) -> pd.DataFrame:
-    total = max(1000, cur_total * 2.2)
-    df = distribute_cases(total, BC_REGIONS, seed=SEED + 11)
-    return df
-
-
 # ---------------------------------------------------------
 # Plot builders
 # ---------------------------------------------------------
-def build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_labels, fc_labels, live_mode=True):
+def build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_dates, fc_dates, live_mode=True):
     fig = go.Figure()
+
     fig.add_trace(
         go.Scatter(
-            x=fc_labels + fc_labels[::-1],
+            x=list(fc_dates) + list(fc_dates[::-1]),
             y=list(cur_hi) + list(cur_lo[::-1]),
             fill="toself",
             fillcolor="rgba(67,180,255,0.12)",
@@ -668,72 +658,73 @@ def build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_labels, 
             name="Prediction band",
         )
     )
+
     fig.add_trace(
         go.Scatter(
-            x=fc_labels,
+            x=fc_dates,
             y=base_fc,
             mode="lines",
             name="Baseline (no intervention)",
             line=dict(color="rgba(245,158,11,0.9)", width=2.2, dash="dot"),
-            hovertemplate="<b>Baseline</b>: %{y:,.0f}<extra></extra>",
+            hovertemplate="<b>%{x|%b %d}</b><br>Baseline: %{y:,.0f}<extra></extra>",
         )
     )
+
     fig.add_trace(
         go.Scatter(
-            x=hist_labels,
+            x=hist_dates,
             y=history,
             mode="lines+markers",
             name="Historical cases",
             line=dict(color="#8aa7d8", width=2.3),
             marker=dict(size=5, color="#8aa7d8"),
-            hovertemplate="<b>%{x}</b><br>Observed: %{y:,.0f}<extra></extra>",
+            hovertemplate="<b>%{x|%b %d}</b><br>Observed: %{y:,.0f}<extra></extra>",
         )
     )
+
     fig.add_trace(
         go.Scatter(
-            x=fc_labels,
+            x=fc_dates,
             y=cur_fc,
             mode="lines+markers",
             name="Live prediction",
             line=dict(color="#ff5c4d", width=3.0),
             marker=dict(size=5, color="#ff5c4d"),
-            hovertemplate="<b>%{x}</b><br>Predicted: %{y:,.0f}<extra></extra>",
+            hovertemplate="<b>%{x|%b %d}</b><br>Predicted: %{y:,.0f}<extra></extra>",
         )
     )
 
-    now_x = hist_labels[-1]
-    fig.add_shape(
-        type="line",
-        x0=now_x,
-        x1=now_x,
-        y0=0,
-        y1=1,
-        xref="x",
-        yref="paper",
+    now_x = hist_dates[-1]
+    fig.add_vline(
+        x=now_x,
         line=dict(color="rgba(255,255,255,0.18)", width=1.2, dash="dash"),
     )
     fig.add_annotation(
         x=now_x,
-        y=1,
-        xref="x",
-        yref="paper",
+        y=max(max(history), max(cur_hi)) * 1.02,
         text="NOW",
         showarrow=False,
-        xanchor="left",
-        yanchor="bottom",
         font=dict(size=11, color="rgba(255,255,255,0.55)"),
+        xanchor="left",
     )
-    subtitle = "Live class votes are already shaping the red prediction line." if live_mode else "Scenario frozen from the last live class consensus."
+
+    subtitle = (
+        "Live class votes are already shaping the red prediction line."
+        if live_mode
+        else "Scenario frozen from the last live class consensus."
+    )
+
     fig.add_annotation(
         xref="paper",
         yref="paper",
         x=0,
-        y=1.13,
+        y=1.12,
         text=subtitle,
         showarrow=False,
         font=dict(size=12, color="#b4c6e8"),
         align="left",
     )
+
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -753,7 +744,7 @@ def build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_labels, 
             showgrid=True,
             gridcolor="rgba(255,255,255,0.06)",
             tickfont=dict(size=11),
-            tickangle=-35,
+            tickformat="%b %d",
             linecolor="rgba(255,255,255,0.08)",
             zeroline=False,
         ),
@@ -793,54 +784,66 @@ def build_driver_chart(drivers_df: pd.DataFrame):
     return fig
 
 
-def build_scatter_geo(df: pd.DataFrame, title: str, subtitle: str, lon_range, lat_range, size_scale: float = 1.0, names_col: str = "zone"):
-    colors = df["risk"].map({"Green": "#22c55e", "Yellow": "#f59e0b", "Red": "#ef4444"})
+def build_hospital_map(df: pd.DataFrame, title: str, subtitle: str):
+    colors = df["risk"].map({"Green": "#22c55e", "Yellow": "#f59e0b", "Red": "#ef4444"}).tolist()
     max_cases = max(df["cases"].max(), 1)
-    sizes = 16 + (df["cases"] / max_cases) * 34 * size_scale
-    hover_text = [f"<b>{name}</b><br>Cases: {cases:,}<br>Risk: {risk}" for name, cases, risk in zip(df[names_col], df["cases"], df["risk"])]
-    fig = go.Figure(
-        go.Scattergeo(
-            lon=df["lon"],
+    sizes = 16 + (df["cases"] / max_cases) * 28
+    halo_sizes = sizes + 16
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scattermapbox(
             lat=df["lat"],
-            text=df[names_col],
-            customdata=df["cases"],
+            lon=df["lon"],
+            mode="markers",
+            marker=dict(
+                size=halo_sizes,
+                color=colors,
+                opacity=0.18,
+            ),
+            hoverinfo="skip",
+            showlegend=False,
+        )
+    )
+
+    fig.add_trace(
+        go.Scattermapbox(
+            lat=df["lat"],
+            lon=df["lon"],
             mode="markers+text",
+            text=df["hospital"],
             textposition="top center",
-            hovertemplate="%{hovertext}<extra></extra>",
-            hovertext=hover_text,
             marker=dict(
                 size=sizes,
                 color=colors,
-                line=dict(width=1.5, color="#ffffff"),
                 opacity=0.85,
+                line=dict(width=1.8, color="#ffffff"),
             ),
+            hovertemplate="<b>%{text}</b><br>Cases: %{customdata:,}<br>Risk: %{meta}<extra></extra>",
+            customdata=df["cases"],
+            meta=df["risk"],
+            showlegend=False,
         )
     )
-    fig.update_geos(
-        scope="north america",
-        projection_type="mercator",
-        showland=True,
-        landcolor="#0b2146",
-        showocean=True,
-        oceancolor="#05101f",
-        showlakes=True,
-        lakecolor="#05101f",
-        coastlinecolor="#4d6fa6",
-        countrycolor="#4d6fa6",
-        subunitcolor="#3c5f96",
-        bgcolor="rgba(0,0,0,0)",
-        lonaxis_range=lon_range,
-        lataxis_range=lat_range,
-        showcountries=True,
-        showsubunits=True,
-    )
+
     fig.update_layout(
-        title=dict(text=f"<b>{title}</b><br><span style='font-size:12px;color:#b4c6e8'>{subtitle}</span>", x=0.02, y=0.97, font=dict(size=16)),
+        mapbox=dict(
+            style="carto-darkmatter",
+            center=dict(lat=49.23, lon=-122.98),
+            zoom=8.7,
+        ),
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=0, r=0, t=48, b=0),
-        height=360,
+        height=380,
         font=dict(color="#eef4ff"),
+        title=dict(
+            text=f"<b>{title}</b><br><span style='font-size:12px;color:#b4c6e8'>{subtitle}</span>",
+            x=0.02,
+            y=0.97,
+            font=dict(size=16),
+        ),
     )
     return fig
 
@@ -857,7 +860,7 @@ def render_vote_page():
         <div class="hero">
             <div>
                 <div class="hero-title">📱 Vote on outbreak controls</div>
-                <div class="hero-sub">Pick the class response. The presenter dashboard and maps update live every few seconds.</div>
+                <div class="hero-sub">Pick the class response. The presenter dashboard and hospital maps update live every few seconds.</div>
             </div>
             <div class="hero-pill">Audience voting page</div>
         </div>
@@ -879,7 +882,11 @@ def render_vote_page():
         with col2:
             closure = st.radio("School / workplace closure", ["Open", "Partial", "Full"])
             testing = st.radio("Testing intensity", ["Low", "Moderate", "High"])
-            st.markdown('<div class="panel"><div class="small-note"><b>Tip:</b> Stronger controls lower the next-week prediction and can flip regions from red to yellow or green.</div></div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="panel"><div class="small-note"><b>Tip:</b> Stronger controls lower the next-week prediction and can flip hospitals from red to yellow or green.</div></div>',
+                unsafe_allow_html=True,
+            )
+
         submitted = st.form_submit_button("Submit my vote", use_container_width=True)
 
     if submitted:
@@ -897,14 +904,18 @@ def render_dashboard():
     frozen = get_setting("frozen", "0") == "1"
     frozen_payload = get_setting("frozen_payload", "")
 
-    display_consensus = live_consensus.copy()
-    live_mode = True
-    if frozen and frozen_payload and not session_open:
+    if session_open:
+        display_consensus = live_consensus.copy()
+        live_mode = True
+    elif frozen and frozen_payload:
         try:
             display_consensus = json.loads(frozen_payload)
-            live_mode = False
         except Exception:
-            display_consensus = live_consensus.copy()
+            display_consensus = default_consensus()
+        live_mode = False
+    else:
+        display_consensus = default_consensus()
+        live_mode = False
 
     public_url = get_public_url()
     qr_bytes = make_qr(vote_url())
@@ -920,27 +931,24 @@ def render_dashboard():
 
     hist_dates = [datetime(2024, 1, 7) + timedelta(weeks=i) for i in range(HIST_WEEKS)]
     fc_dates = [hist_dates[-1] + timedelta(weeks=i + 1) for i in range(FC_WEEKS)]
-    hist_labels = [d.strftime("%b %d") for d in hist_dates]
-    fc_labels = [d.strftime("%b %d") for d in fc_dates]
 
     last_week_total = int(history[-1])
     next_week_total = cur_m["week1"]
-    metro_last = distribute_cases(last_week_total, METRO_ZONES, seed=SEED)
-    metro_next = distribute_cases(next_week_total, METRO_ZONES, seed=SEED + 7)
-    bc_df = provincial_lights(next_week_total, multiplier)
+
+    hosp_last = distribute_cases(last_week_total, METRO_HOSPITALS, seed=SEED)
+    hosp_next = distribute_cases(next_week_total, METRO_HOSPITALS, seed=SEED + 7)
 
     peak_delta = cur_m["peak_val"] - base_m["peak_val"]
     total_delta = cur_m["total"] - base_m["total"]
     trend_color = "#22c55e" if "↓" in cur_m["trend"] else "#ef4444"
     mult_pct = round((1 - multiplier) * 100, 1)
 
-    st.markdown('<div class="app-shell">', unsafe_allow_html=True)
     st.markdown(
         f"""
         <div class="hero">
             <div>
                 <div class="hero-title"><span style="color:#ef4444;">•</span> Metro Vancouver COVID Forecaster</div>
-                <div class="hero-sub">ML time-series ensemble · Holt-Winters + linear trend · <b>{'LIVE VOTING OPEN' if session_open else ('SCENARIO APPLIED' if not live_mode else 'SESSION CLOSED')}</b> · {len(votes_df)} votes cast</div>
+                <div class="hero-sub">ML time-series ensemble · Holt-Winters + linear trend · <b>{'LIVE VOTING OPEN' if session_open else ('FROZEN SCENARIO' if frozen else 'SESSION CLOSED')}</b> · {len(votes_df)} votes cast</div>
             </div>
             <div class="hero-pill">Presenter dashboard</div>
         </div>
@@ -980,73 +988,52 @@ def render_dashboard():
 
     with left:
         st.markdown('<div class="section-title">ML forecast · weekly new cases · Metro Vancouver</div>', unsafe_allow_html=True)
-        forecast_fig = build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_labels, fc_labels, live_mode=live_mode)
+        forecast_fig = build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_dates, fc_dates, live_mode=live_mode)
         st.plotly_chart(forecast_fig, use_container_width=True, config={"displayModeBar": False})
 
         map_a, map_b = st.columns(2)
         with map_a:
             st.plotly_chart(
-                build_scatter_geo(
-                    metro_last,
-                    title="Observed map · last week",
-                    subtitle=f"These are the most recent observed cases feeding the model ({last_week_total:,} total).",
-                    lon_range=[-123.35, -122.70],
-                    lat_range=[49.00, 49.40],
-                    size_scale=1.0,
-                    names_col="zone",
+                build_hospital_map(
+                    hosp_last,
+                    title="Observed hospital map · last week",
+                    subtitle=f"These are the latest observed hospital-linked case loads feeding the model ({last_week_total:,} total).",
                 ),
                 use_container_width=True,
                 config={"displayModeBar": False},
             )
         with map_b:
             st.plotly_chart(
-                build_scatter_geo(
-                    metro_next,
-                    title="Predicted map · next week",
+                build_hospital_map(
+                    hosp_next,
+                    title="Predicted hospital map · next week",
                     subtitle=f"Live class votes shift the next-week prediction to {next_week_total:,} cases.",
-                    lon_range=[-123.35, -122.70],
-                    lat_range=[49.00, 49.40],
-                    size_scale=1.0,
-                    names_col="zone",
                 ),
                 use_container_width=True,
                 config={"displayModeBar": False},
             )
 
-        st.markdown('<div class="section-title">Provincial spread lights and model drivers</div>', unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Metro hospital lights and model drivers</div>', unsafe_allow_html=True)
         m1, m2 = st.columns([1.45, 1.0], gap="large")
         with m1:
-            st.plotly_chart(
-                build_scatter_geo(
-                    bc_df.rename(columns={"region": "zone"}),
-                    title="BC impact map",
-                    subtitle="Red = heavier spread, yellow = moderate spread, green = lower spread.",
-                    lon_range=[-139.0, -114.0],
-                    lat_range=[48.0, 60.0],
-                    size_scale=0.8,
-                    names_col="zone",
-                ),
-                use_container_width=True,
-                config={"displayModeBar": False},
-            )
             traffic_html = '<div class="traffic-grid">'
-            for _, row in bc_df.iterrows():
+            for _, row in hosp_next.sort_values("cases", ascending=False).head(8).iterrows():
                 traffic_html += f'''
                 <div class="traffic-card">
                     <div class="traffic-dot" style="background:{spread_light_color(row['risk'])};"></div>
-                    <div class="traffic-name">{row['region']}</div>
+                    <div class="traffic-name">{row['hospital']}</div>
                     <div class="traffic-val">{int(row['cases']):,} cases · {row['risk']}</div>
                 </div>
                 '''
             traffic_html += '</div>'
             st.markdown(traffic_html, unsafe_allow_html=True)
 
-        with m2:
-            st.plotly_chart(build_driver_chart(drivers_df), use_container_width=True, config={"displayModeBar": False})
             st.markdown(
-                '<div class="panel"><div class="small-note"><b>How to read this:</b> the left Metro map shows the most recent observed cases. The right Metro map shows the model’s next-week prediction after applying the current class consensus. The BC spread lights help kids quickly interpret which regions are in a green, yellow, or red state. The driver chart shows which chosen controls are doing the most to push spread down.</div></div>',
+                '<div class="panel" style="margin-top:12px;"><div class="small-note"><b>How to read this:</b> the left hospital map shows the most recent observed case pressure. The right hospital map shows the next-week prediction. Bigger circles and red lights mean heavier forecasted spread around those hospitals.</div></div>',
                 unsafe_allow_html=True,
             )
+        with m2:
+            st.plotly_chart(build_driver_chart(drivers_df), use_container_width=True, config={"displayModeBar": False})
 
         st.markdown('<div class="section-title">Before / after intervention</div>', unsafe_allow_html=True)
         st.markdown(
@@ -1086,14 +1073,20 @@ def render_dashboard():
             if st.button("Close voting session", use_container_width=True):
                 set_setting("session_open", "0")
                 st.rerun()
-            st.markdown(f'<div class="vote-stat">Open · {len(votes_df)} votes received · dashboard auto-refreshes every 2.5s</div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div class="vote-stat">Open · {len(votes_df)} votes received · dashboard auto-refreshes every 2.5s</div>',
+                unsafe_allow_html=True,
+            )
         else:
             if st.button("Open voting session", use_container_width=True):
                 set_setting("session_open", "1")
                 set_setting("frozen", "0")
                 set_setting("frozen_payload", "")
                 st.rerun()
-            st.markdown('<div class="vote-stat">Closed · open the session to accept student votes</div>', unsafe_allow_html=True)
+            st.markdown(
+                '<div class="vote-stat">Closed · open the session to accept student votes</div>',
+                unsafe_allow_html=True,
+            )
 
         st.markdown('<div class="section-title">Current class consensus</div>', unsafe_allow_html=True)
         st.markdown(
@@ -1110,14 +1103,14 @@ def render_dashboard():
         )
 
         st.markdown('<div class="section-title">Actions</div>', unsafe_allow_html=True)
-        if not frozen:
-            if st.button("Apply votes to forecast", use_container_width=True):
+        if session_open:
+            if st.button("Freeze current live scenario", use_container_width=True):
                 set_setting("frozen_payload", json.dumps(live_consensus))
                 set_setting("frozen", "1")
                 set_setting("session_open", "0")
                 st.rerun()
         else:
-            if st.button("Resume live voting", use_container_width=True):
+            if frozen and st.button("Resume live voting", use_container_width=True):
                 set_setting("frozen", "0")
                 set_setting("frozen_payload", "")
                 set_setting("session_open", "1")
@@ -1131,8 +1124,6 @@ def render_dashboard():
             st.rerun()
 
         st.markdown('<div class="small-note" style="margin-top:10px;">The QR code points to: ' + vote_url() + '</div>', unsafe_allow_html=True)
-
-    st.markdown('</div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------
