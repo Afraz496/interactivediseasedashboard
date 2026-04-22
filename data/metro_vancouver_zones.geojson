@@ -1,0 +1,434 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Vancouver"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -123.28,
+              49.2
+            ],
+            [
+              -123.06,
+              49.2
+            ],
+            [
+              -123.03,
+              49.31
+            ],
+            [
+              -123.24,
+              49.33
+            ],
+            [
+              -123.28,
+              49.2
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Burnaby"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -123.03,
+              49.2
+            ],
+            [
+              -122.9,
+              49.2
+            ],
+            [
+              -122.86,
+              49.29
+            ],
+            [
+              -122.98,
+              49.31
+            ],
+            [
+              -123.03,
+              49.2
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Richmond"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -123.23,
+              49.08
+            ],
+            [
+              -122.98,
+              49.08
+            ],
+            [
+              -122.97,
+              49.2
+            ],
+            [
+              -123.18,
+              49.2
+            ],
+            [
+              -123.23,
+              49.08
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "North Vancouver"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -123.2,
+              49.3
+            ],
+            [
+              -123.03,
+              49.3
+            ],
+            [
+              -123.01,
+              49.39
+            ],
+            [
+              -123.18,
+              49.4
+            ],
+            [
+              -123.2,
+              49.3
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "West Vancouver"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -123.29,
+              49.3
+            ],
+            [
+              -123.18,
+              49.3
+            ],
+            [
+              -123.18,
+              49.4
+            ],
+            [
+              -123.28,
+              49.4
+            ],
+            [
+              -123.29,
+              49.3
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "New Westminster"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -122.95,
+              49.19
+            ],
+            [
+              -122.88,
+              49.19
+            ],
+            [
+              -122.88,
+              49.23
+            ],
+            [
+              -122.95,
+              49.23
+            ],
+            [
+              -122.95,
+              49.19
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Coquitlam"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -122.92,
+              49.24
+            ],
+            [
+              -122.74,
+              49.24
+            ],
+            [
+              -122.7,
+              49.34
+            ],
+            [
+              -122.84,
+              49.37
+            ],
+            [
+              -122.92,
+              49.24
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Port Moody"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -122.91,
+              49.27
+            ],
+            [
+              -122.83,
+              49.27
+            ],
+            [
+              -122.81,
+              49.31
+            ],
+            [
+              -122.88,
+              49.32
+            ],
+            [
+              -122.91,
+              49.27
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Surrey"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -122.91,
+              49.02
+            ],
+            [
+              -122.69,
+              49.02
+            ],
+            [
+              -122.62,
+              49.18
+            ],
+            [
+              -122.82,
+              49.23
+            ],
+            [
+              -122.91,
+              49.02
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Delta"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -123.2,
+              49.0
+            ],
+            [
+              -122.92,
+              49.0
+            ],
+            [
+              -122.9,
+              49.15
+            ],
+            [
+              -123.08,
+              49.18
+            ],
+            [
+              -123.2,
+              49.0
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Langley"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -122.7,
+              49.05
+            ],
+            [
+              -122.42,
+              49.05
+            ],
+            [
+              -122.38,
+              49.17
+            ],
+            [
+              -122.62,
+              49.18
+            ],
+            [
+              -122.7,
+              49.05
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "Maple Ridge"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -122.67,
+              49.17
+            ],
+            [
+              -122.42,
+              49.17
+            ],
+            [
+              -122.36,
+              49.29
+            ],
+            [
+              -122.57,
+              49.33
+            ],
+            [
+              -122.67,
+              49.17
+            ]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "properties": {
+        "zone": "White Rock"
+      },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [
+              -122.84,
+              49.0
+            ],
+            [
+              -122.75,
+              49.0
+            ],
+            [
+              -122.74,
+              49.05
+            ],
+            [
+              -122.83,
+              49.06
+            ],
+            [
+              -122.84,
+              49.0
+            ]
+          ]
+        ]
+      }
+    }
+  ]
+}

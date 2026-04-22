@@ -1,0 +1,14 @@
+hospital,lat,lon,zone,base_beds
+Vancouver General Hospital,49.2613,-123.1246,Vancouver,955
+St. Paul's Hospital,49.2836,-123.1286,Vancouver,450
+BC Children's Hospital,49.2445,-123.1244,Vancouver,250
+Burnaby Hospital,49.2534,-122.9688,Burnaby,300
+Richmond Hospital,49.1664,-123.1374,Richmond,250
+Lions Gate Hospital,49.3182,-123.0729,North Vancouver,330
+Royal Columbian Hospital,49.2202,-122.8921,New Westminster,490
+Eagle Ridge Hospital,49.2798,-122.793,Coquitlam,180
+Surrey Memorial Hospital,49.1908,-122.849,Surrey,700
+Delta Hospital,49.0884,-123.0602,Delta,110
+Langley Memorial Hospital,49.1048,-122.6599,Langley,200
+Ridge Meadows Hospital,49.2199,-122.6013,Maple Ridge,220
+Peace Arch Hospital,49.0298,-122.8026,White Rock,170
