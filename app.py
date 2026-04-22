@@ -1,14 +1,10 @@
 # =============================
-# 🔥 Metro Vancouver + BC Dashboard (FINAL)
+# 🦠 FINAL Outbreak Simulator (Clean UX Version)
 # =============================
 
 import io
-import json
 import math
-import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
-from urllib.parse import urlencode
 
 import folium
 import numpy as np
@@ -16,132 +12,69 @@ import pandas as pd
 import plotly.graph_objects as go
 import qrcode
 import streamlit as st
-from branca.element import Element
-from streamlit_autorefresh import st_autorefresh
 from streamlit_folium import st_folium
 
+# =============================
+# CONFIG
+# =============================
+
 APP_TITLE = "Metro Vancouver Outbreak Simulator"
-
-DB_PATH = Path("disease_audience_state.db")
-
-# ✅ FIXED URL
-DEFAULT_PUBLIC_URL = "https://afrazmathapp.streamlit.app"
-
-SEED = 42
+PUBLIC_URL = "https://afrazmathapp.streamlit.app"
+VOTE_URL = f"{PUBLIC_URL}?mode=vote"
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🦠", layout="wide")
 
 # =============================
-# DATABASE
+# DARK THEME
 # =============================
 
-def get_conn():
-    conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-def init_db():
-    conn = get_conn()
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key TEXT PRIMARY KEY,
-            value TEXT NOT NULL
-        )
-    """)
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS votes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            voter_name TEXT,
-            disease TEXT,
-            horizon REAL,
-            base_cases REAL,
-            growth REAL,
-            mobility REAL,
-            prevention REAL,
-            vacc_gap REAL,
-            lineages REAL,
-            seasonality REAL,
-            indoor REAL,
-            school_mix REAL,
-            severity REAL,
-            created_at TEXT
-        )
-    """)
-
-    conn.commit()
-    conn.close()
-
-def get_setting(key, default=""):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute("SELECT value FROM settings WHERE key=?", (key,))
-    row = cur.fetchone()
-    conn.close()
-    return row["value"] if row else default
-
-def set_setting(key, value):
-    conn = get_conn()
-    cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO settings (key,value) VALUES (?,?) "
-        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        (key, str(value))
-    )
-    conn.commit()
-    conn.close()
-
-# =============================
-# 🔥 FORCE URL FIX EVERY RUN
-# =============================
-
-init_db()
-set_setting("public_url", DEFAULT_PUBLIC_URL)
+st.markdown("""
+<style>
+.stApp {
+    background: linear-gradient(180deg,#0b1020,#0f172a);
+    color: white;
+}
+h1,h2,h3,h4,p,label {
+    color:white;
+}
+</style>
+""", unsafe_allow_html=True)
 
 # =============================
 # DATA
 # =============================
 
-@st.cache_data
-def load_zones():
-    return pd.DataFrame({
-        "zone": ["Vancouver","Burnaby","Richmond","Surrey"],
-        "lat": [49.28,49.25,49.16,49.19],
-        "lon": [-123.12,-122.98,-123.13,-122.84],
-        "weight": [1.3,1.0,0.9,1.1]
-    })
+zones = pd.DataFrame({
+    "zone": ["Vancouver","Burnaby","Richmond","Surrey"],
+    "lat": [49.28,49.25,49.16,49.19],
+    "lon": [-123.12,-122.98,-123.13,-122.84],
+    "weight": [1.3,1.0,0.9,1.1]
+})
 
 # =============================
 # MODEL
 # =============================
 
-def forecast(params):
-    base = params["base_cases"]
-    growth = params["growth"]
-
+def forecast(base, growth):
     vals = []
     cur = base
-
     for i in range(14):
         cur = cur * growth
         vals.append(cur)
-
     return vals
 
 # =============================
 # MAPS
 # =============================
 
-def build_metro_map(zone_df, cases):
+def build_metro_map(base_cases):
     m = folium.Map(location=[49.25,-123.1], zoom_start=10,
                    tiles="cartodb dark_matter")
 
-    for _,r in zone_df.iterrows():
+    for _,r in zones.iterrows():
         folium.Circle(
             location=[r["lat"], r["lon"]],
-            radius=cases * r["weight"] * 5,
+            radius=base_cases * r["weight"] * 5,
             color="#ef4444",
             fill=True,
             fill_opacity=0.4
@@ -151,99 +84,104 @@ def build_metro_map(zone_df, cases):
 
 
 def build_bc_map(base_cases):
-    bc_center = [53.7267, -127.6476]
-
-    m = folium.Map(
-        location=bc_center,
-        zoom_start=5,
-        tiles="cartodb dark_matter"
-    )
+    center = [53.7267, -127.6476]
+    m = folium.Map(location=center, zoom_start=5,
+                   tiles="cartodb dark_matter")
 
     scale = min(base_cases / 1000, 2.5)
 
     folium.Circle(
-        location=bc_center,
+        location=center,
         radius=200000 * (scale ** 1.5),
         color="#ef4444",
         fill=True,
-        fill_opacity=0.25,
+        fill_opacity=0.25
     ).add_to(m)
-
-    cities = [
-        ("Vancouver",49.28,-123.12),
-        ("Victoria",48.43,-123.36),
-        ("Kelowna",49.88,-119.49),
-        ("Prince George",53.91,-122.75),
-    ]
-
-    for name,lat,lon in cities:
-        folium.CircleMarker(
-            location=[lat,lon],
-            radius=6,
-            color="#38bdf8",
-            fill=True
-        ).add_to(m)
 
     return m
 
 # =============================
-# QR CODE
+# QR
 # =============================
 
 def make_qr(url):
-    qr = qrcode.make(url)
+    img = qrcode.make(url)
     buf = io.BytesIO()
-    qr.save(buf)
+    img.save(buf)
     return buf.getvalue()
 
-# =============================
-# MAIN
-# =============================
-
-zones = load_zones()
-
-params = {
-    "base_cases": 450,
-    "growth": 1.05
-}
-
-forecast_vals = forecast(params)
-
-public_url = get_setting("public_url")
-vote_url = public_url + "?mode=vote"
-
-qr = make_qr(vote_url)
+qr = make_qr(VOTE_URL)
 
 # =============================
-# UI
+# HERO
 # =============================
 
-st.title("🦠 Outbreak Simulator")
+st.markdown("""
+<div style="
+    background: linear-gradient(135deg,#0ea5e9,#1e3a8a);
+    padding:20px;
+    border-radius:20px;
+    margin-bottom:20px;
+">
+<h1 style="color:white;">🦠 Metro Vancouver Outbreak Simulator</h1>
+<p style="color:#cbd5e1;">
+Students change parameters → watch the outbreak react live
+</p>
+</div>
+""", unsafe_allow_html=True)
 
-col1, col2 = st.columns([2,1])
+# =============================
+# CONTROLS
+# =============================
 
-with col1:
-    tab1, tab2, tab3 = st.tabs(["Forecast","Metro Map","BC Impact"])
+left, right = st.columns([2.5,1])
 
-    with tab1:
-        fig = go.Figure()
-        fig.add_trace(go.Scatter(y=forecast_vals, mode="lines+markers"))
-        fig.update_layout(template="plotly_dark")
-        st.plotly_chart(fig, use_container_width=True)
-
-    with tab2:
-        m = build_metro_map(zones, params["base_cases"])
-        st_folium(m, height=500)
-
-    with tab3:
-        bc_map = build_bc_map(params["base_cases"])
-        st_folium(bc_map, height=500)
-
-with col2:
-    st.subheader("Scan to vote")
-
+with right:
+    st.subheader("📱 Scan to vote")
     st.image(qr)
+    st.caption(VOTE_URL)
 
-    st.caption(vote_url)
+    st.markdown("---")
 
-    st.download_button("Download QR", qr)
+    st.subheader("🎛 Controls")
+
+    base_cases = st.slider("Base cases", 50, 2000, 450)
+    growth = st.slider("Growth rate", 0.9, 1.2, 1.05, 0.01)
+
+    st.markdown("---")
+
+    if growth > 1.1:
+        st.error("🔥 Rapid outbreak")
+    elif growth > 1.05:
+        st.warning("⚠️ Moderate growth")
+    else:
+        st.success("✅ Stable")
+
+# =============================
+# MAIN VISUALS
+# =============================
+
+with left:
+
+    st.subheader("🔥 Metro outbreak map")
+    metro_map = build_metro_map(base_cases)
+    st_folium(metro_map, height=550)
+
+    st.markdown("### 📈 Forecast")
+
+    vals = forecast(base_cases, growth)
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(
+        y=vals,
+        mode="lines+markers",
+        line=dict(width=4)
+    ))
+    fig.update_layout(template="plotly_dark")
+
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("### 🌎 BC-wide spread")
+
+    bc_map = build_bc_map(base_cases)
+    st_folium(bc_map, height=450)
