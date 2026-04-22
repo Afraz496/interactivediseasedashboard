@@ -1,14 +1,13 @@
 # ============================================================
 # 🦠 Metro Vancouver COVID Outbreak Forecaster
 # Cleaned UI version: solid dark blue, larger text, clearer controls
+# Fixed Plotly categorical vline crash
 # ============================================================
 
 import io
-import math
 from datetime import datetime, timedelta
 
 import numpy as np
-import pandas as pd
 import plotly.graph_objects as go
 import qrcode
 import streamlit as st
@@ -198,18 +197,6 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
     background: var(--border);
 }
 
-/* Panels */
-.panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 18px;
-    padding: 16px 18px;
-}
-
-.panel-spaced {
-    margin-top: 16px;
-}
-
 /* Compare strip */
 .compare-strip {
     display: grid;
@@ -384,7 +371,6 @@ for k, v in defaults.items():
 HISTORICAL_WEEKS = 26
 FORECAST_WEEKS = 12
 
-
 def generate_historical(seed: int = 42) -> np.ndarray:
     rng = np.random.default_rng(seed)
     t = np.linspace(0, 1, HISTORICAL_WEEKS)
@@ -393,7 +379,6 @@ def generate_historical(seed: int = 42) -> np.ndarray:
     base = 400 + wave1 + wave2
     noise = rng.normal(0, 120, HISTORICAL_WEEKS)
     return np.clip(base + noise, 50, None).astype(float)
-
 
 def holt_winters(series: np.ndarray, n_ahead: int,
                  alpha: float = 0.35, beta: float = 0.15,
@@ -415,7 +400,6 @@ def holt_winters(series: np.ndarray, n_ahead: int,
         forecast[i] = level + (i + 1) * trend + seasons[(n + i) % season_len]
     return np.clip(forecast, 0, None)
 
-
 def linear_trend(series: np.ndarray, n_ahead: int, window: int = 8) -> np.ndarray:
     tail = series[-window:]
     x = np.arange(window, dtype=float)
@@ -425,7 +409,6 @@ def linear_trend(series: np.ndarray, n_ahead: int, window: int = 8) -> np.ndarra
     fut = np.arange(window, window + n_ahead, dtype=float)
     return np.clip(intercept + slope * fut, 0, None)
 
-
 def ensemble_forecast(series: np.ndarray, n_ahead: int,
                       hw_weight: float = 0.65) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     hw = holt_winters(series, n_ahead)
@@ -434,13 +417,11 @@ def ensemble_forecast(series: np.ndarray, n_ahead: int,
     sigma = mean * (0.06 + 0.012 * np.arange(n_ahead))
     return mean, mean - sigma, mean + sigma
 
-
 MASK_EFFECT = {"None (0%)": 1.0, "Low (25%)": 0.87, "Medium (60%)": 0.70, "High (90%)": 0.52}
 DISTANCE_EFFECT = {"None": 1.0, "Mild": 0.90, "Moderate": 0.76, "Strict": 0.60}
 VACCINE_EFFECT = {"0%": 1.0, "30%": 0.82, "60%": 0.62, "90%": 0.38}
 CLOSURE_EFFECT = {"Open": 1.0, "Partial": 0.83, "Full": 0.65}
 TESTING_EFFECT = {"Low": 1.0, "Moderate": 0.93, "High": 0.88}
-
 
 def compute_multiplier(mask, distance, vaccine, closure, testing) -> float:
     return (
@@ -451,14 +432,12 @@ def compute_multiplier(mask, distance, vaccine, closure, testing) -> float:
         * TESTING_EFFECT[testing]
     )
 
-
 def apply_interventions(base_fc: np.ndarray, lo: np.ndarray, hi: np.ndarray,
                         mult: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     ramp = np.linspace(1.0, mult, min(4, len(base_fc)))
     full = np.full(len(base_fc), mult)
     full[:len(ramp)] = ramp
     return base_fc * full, lo * full, hi * full
-
 
 def metrics_from(fc: np.ndarray) -> dict:
     peak_val = int(fc.max())
@@ -485,7 +464,6 @@ def make_qr(url: str) -> bytes:
     buf = io.BytesIO()
     img.save(buf)
     return buf.getvalue()
-
 
 qr_bytes = make_qr(VOTE_URL)
 
@@ -575,12 +553,28 @@ def build_chart(history, base_fc, base_lo, base_hi,
         hovertemplate='<b>%{x}</b><br>Forecast: %{y:,.0f}<extra></extra>',
     ))
 
-    fig.add_vline(
-        x=date_labels_hist[-1],
+    # FIX: categorical x-axis safe vertical line + annotation
+    now_x = date_labels_hist[-1]
+    fig.add_shape(
+        type="line",
+        x0=now_x,
+        x1=now_x,
+        y0=0,
+        y1=1,
+        xref="x",
+        yref="paper",
         line=dict(color='rgba(255,255,255,0.18)', width=1, dash='dash'),
-        annotation_text="NOW",
-        annotation_font=dict(size=10, color='rgba(255,255,255,0.55)'),
-        annotation_position="top right",
+    )
+    fig.add_annotation(
+        x=now_x,
+        y=1,
+        xref="x",
+        yref="paper",
+        text="NOW",
+        showarrow=False,
+        xanchor="left",
+        yanchor="bottom",
+        font=dict(size=10, color='rgba(255,255,255,0.55)')
     )
 
     fig.update_layout(
@@ -735,10 +729,8 @@ between policy change and outbreak impact. The shaded band shows uncertainty, wh
 
 with col_side:
     st.markdown('<div class="section-label">Scan to vote</div>', unsafe_allow_html=True)
-    st.markdown('<div class="panel">', unsafe_allow_html=True)
     st.image(qr_bytes, width=185)
     st.caption(VOTE_URL)
-    st.markdown('</div>', unsafe_allow_html=True)
 
     st.markdown('<div class="section-label" style="margin-top:18px;">Session</div>', unsafe_allow_html=True)
 
