@@ -1,9 +1,5 @@
-# ============================================================
-# 🦠 Metro Vancouver COVID Outbreak Forecaster
-# Presenter dashboard + QR-linked voting page
-# ============================================================
-
 import io
+import json
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -14,14 +10,16 @@ import plotly.graph_objects as go
 import qrcode
 import streamlit as st
 
-# ──────────────────────────────────────────────
-# PAGE CONFIG
-# ──────────────────────────────────────────────
+try:
+    from streamlit_autorefresh import st_autorefresh
+except Exception:
+    def st_autorefresh(*args, **kwargs):
+        return None
+
 
 APP_TITLE = "Metro Vancouver COVID Forecaster"
-PUBLIC_URL = "https://afrazdiseasedashboard.streamlit.app"
-VOTE_URL = f"{PUBLIC_URL}?mode=vote"
 DB_PATH = Path("covid_vote_state.db")
+DEFAULT_PUBLIC_URL = "https://afrazdiseasedashboard.streamlit.app"
 
 st.set_page_config(
     page_title=APP_TITLE,
@@ -30,306 +28,325 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ──────────────────────────────────────────────
-# GLOBAL STYLES
-# ──────────────────────────────────────────────
-
-st.markdown("""
+# ---------------------------------------------------------
+# Styling
+# ---------------------------------------------------------
+st.markdown(
+    """
 <style>
 :root {
-    --bg: #071225;
-    --panel: #0d1b34;
-    --panel-2: #102042;
-    --border: #1f3561;
-    --text: #eaf1ff;
-    --muted: #a8b7d9;
-    --subtle: #7e90b8;
-    --accent: #47b3ff;
-    --accent-2: #6dd3ff;
-    --good: #22c55e;
-    --warn: #f59e0b;
-    --bad: #ef4444;
+    --bg: #04142e;
+    --panel: #0a1d3f;
+    --panel-2: #0d264f;
+    --panel-3: #081833;
+    --border: #1f4b85;
+    --text: #eef4ff;
+    --muted: #b4c6e8;
+    --subtle: #76a1d8;
+    --accent: #43b4ff;
+    --accent-2: #6de1ff;
+    --green: #22c55e;
+    --yellow: #f59e0b;
+    --red: #ef4444;
 }
 
 html, body, [class*="css"] {
     font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: var(--bg) !important;
     color: var(--text) !important;
 }
 
 .stApp, [data-testid="stAppViewContainer"] {
     background: var(--bg) !important;
-    color: var(--text) !important;
 }
-
-#MainMenu, footer, header {
-    visibility: hidden;
+[data-testid="stHeader"] {
+    background: transparent !important;
 }
-
+#MainMenu, footer {visibility: hidden;}
 .block-container {
-    max-width: 1400px;
-    padding-top: 1.25rem;
-    padding-bottom: 3rem;
+    max-width: 1420px;
+    padding-top: 1.1rem;
+    padding-bottom: 2.5rem;
 }
-
 h1, h2, h3, h4, h5, h6, p, label, div, span {
     color: var(--text) !important;
 }
 
-/* Header */
-.app-header {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 20px;
-    margin-bottom: 22px;
-    padding: 22px 24px;
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 18px;
+.app-shell {
+    background: transparent;
 }
-
-.header-left h1 {
-    font-size: 2.15rem;
-    line-height: 1.05;
-    font-weight: 800;
+.hero {
+    display:flex;
+    justify-content:space-between;
+    gap: 18px;
+    align-items:flex-start;
+    background: linear-gradient(180deg, rgba(12,34,73,0.96), rgba(10,29,63,0.96));
+    border:1px solid rgba(72,125,193,0.45);
+    border-radius:22px;
+    padding:24px 24px 22px;
+    margin-bottom:18px;
+    box-shadow: 0 10px 24px rgba(0,0,0,0.20);
+}
+.hero-title {
+    font-size: 2.35rem;
+    font-weight: 900;
     letter-spacing: -0.03em;
+    line-height: 1.03;
     margin: 0;
 }
-
-.header-left p {
-    margin: 10px 0 0;
-    font-size: 1rem;
+.hero-sub {
+    margin-top: 10px;
+    font-size: 1.05rem;
+    line-height: 1.5;
     color: var(--muted) !important;
-    line-height: 1.45;
 }
-
-.status-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 0.9rem;
-    font-weight: 700;
-    padding: 10px 14px;
+.hero-pill {
+    border:1px solid rgba(100,153,220,0.35);
+    background: rgba(8,24,51,0.88);
+    padding: 11px 16px;
     border-radius: 999px;
-    border: 1px solid var(--border);
-    background: var(--panel-2);
+    font-weight: 800;
+    font-size: 1rem;
+    white-space: nowrap;
 }
-
-.live-dot {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--bad);
-    animation: blink 1.8s infinite;
-}
-@keyframes blink {
-    0%,100% { opacity: 1; }
-    50% { opacity: .35; }
-}
-
-/* Metrics */
 .metric-grid {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 14px;
-    margin-bottom: 1.4rem;
+    display:grid;
+    grid-template-columns: repeat(4, minmax(0,1fr));
+    gap:14px;
+    margin-bottom:14px;
 }
 .metric-card {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 18px 18px 16px;
+    background: linear-gradient(180deg, rgba(10,29,63,0.98), rgba(8,24,51,0.98));
+    border:1px solid rgba(72,125,193,0.42);
+    border-radius:18px;
+    padding:18px 18px 16px;
 }
-.metric-card .label {
-    font-size: 0.82rem;
-    font-weight: 700;
-    letter-spacing: 0.04em;
+.metric-label {
+    font-size: 0.83rem;
     text-transform: uppercase;
+    letter-spacing: 0.09em;
     color: var(--subtle) !important;
+    font-weight: 800;
     margin-bottom: 10px;
 }
-.metric-card .value {
-    font-size: 2rem;
-    font-weight: 800;
+.metric-value {
+    font-size: 2.1rem;
+    font-weight: 900;
     line-height: 1.05;
 }
-.metric-card .sub {
-    font-size: 0.95rem;
-    color: var(--muted) !important;
+.metric-sub {
     margin-top: 8px;
-    line-height: 1.35;
+    font-size: 0.97rem;
+    color: var(--muted) !important;
+    line-height: 1.4;
 }
-
-/* Section labels */
-.section-label {
-    font-size: 0.85rem;
-    font-weight: 700;
-    letter-spacing: 0.06em;
+.section-title {
+    font-size: 0.93rem;
     text-transform: uppercase;
+    letter-spacing: 0.12em;
     color: var(--accent-2) !important;
-    margin: 0 0 10px;
+    font-weight: 900;
+    margin: 8px 0 12px;
     display: flex;
-    align-items: center;
     gap: 10px;
+    align-items: center;
 }
-.section-label::after {
+.section-title::after {
     content: '';
     flex: 1;
     height: 1px;
-    background: var(--border);
+    background: rgba(72,125,193,0.38);
 }
-
-/* Panels */
 .panel {
-    background: var(--panel);
-    border: 1px solid var(--border);
-    border-radius: 16px;
-    padding: 16px;
+    background: linear-gradient(180deg, rgba(10,29,63,0.98), rgba(8,24,51,0.98));
+    border:1px solid rgba(72,125,193,0.42);
+    border-radius:18px;
+    padding:16px;
 }
-
-/* Compare strip */
+.small-note {
+    color: var(--muted) !important;
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+.traffic-grid {
+    display:grid;
+    grid-template-columns: repeat(5, minmax(0,1fr));
+    gap:10px;
+}
+.traffic-card {
+    background: rgba(8,24,51,0.86);
+    border: 1px solid rgba(72,125,193,0.33);
+    border-radius: 16px;
+    padding: 14px 12px;
+    text-align:center;
+}
+.traffic-dot {
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    display:inline-block;
+    margin-bottom: 8px;
+    box-shadow: 0 0 10px rgba(255,255,255,0.14);
+}
+.traffic-name {
+    font-size: 0.9rem;
+    font-weight: 800;
+}
+.traffic-val {
+    margin-top: 6px;
+    font-size: 0.88rem;
+    color: var(--muted) !important;
+}
 .compare-strip {
-    display: grid;
+    display:grid;
     grid-template-columns: 1fr 1fr;
-    gap: 14px;
-    margin-top: 0.8rem;
+    gap:14px;
+    margin-top: 10px;
 }
 .compare-card {
-    border-radius: 14px;
-    padding: 16px 16px 12px;
-    border: 1px solid var(--border);
+    border-radius:16px;
+    padding:16px;
 }
 .before-card {
-    background: #22160b;
-    border-color: #5b3a17;
+    background: #2a1808;
+    border:1px solid #72401a;
 }
 .after-card {
-    background: #0c1d2d;
-    border-color: #1a4c73;
+    background: #0a2945;
+    border:1px solid #2a6996;
 }
-.compare-card .c-label {
-    font-size: 0.82rem;
-    letter-spacing: 0.04em;
+.compare-label {
     text-transform: uppercase;
-    margin-bottom: 10px;
-    font-weight: 800;
+    letter-spacing: 0.08em;
+    font-size: 0.82rem;
+    font-weight: 900;
+    margin-bottom: 12px;
 }
-.compare-card .c-row {
-    display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    font-size: 1rem;
+.compare-row {
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    padding:5px 0;
+    font-size: 0.98rem;
     color: var(--muted) !important;
-    padding: 5px 0;
 }
-.compare-card .c-row span {
-    font-weight: 800;
+.compare-row span {
+    font-weight: 900;
+    color: var(--text) !important;
 }
-
-/* Insight banner */
-.insight-banner {
-    background: var(--panel);
-    border: 1px solid var(--border);
+.banner-note {
+    background: linear-gradient(180deg, rgba(13,38,79,0.96), rgba(10,29,63,0.96));
+    border: 1px solid rgba(72,125,193,0.42);
     border-left: 4px solid var(--accent);
-    border-radius: 14px;
-    padding: 14px 16px;
+    border-radius: 16px;
+    padding: 15px 16px;
+    margin-top: 16px;
     font-size: 1rem;
+    line-height: 1.6;
     color: var(--muted) !important;
-    line-height: 1.65;
-    margin-top: 1rem;
 }
-
-/* Inputs */
-div[data-testid="stRadio"] > label {
-    font-size: 0.82rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.04em !important;
-    text-transform: uppercase !important;
-    color: var(--subtle) !important;
-    margin-bottom: 6px !important;
+.vote-stat {
+    font-size: 0.95rem;
+    color: var(--muted) !important;
+    margin-top: 8px;
 }
-div[data-testid="stRadio"] div[role="radiogroup"] {
-    display: flex;
-    flex-direction: column;
+.summary-box {
+    background: rgba(8,24,51,0.85);
+    border:1px solid rgba(72,125,193,0.35);
+    border-radius:16px;
+    padding:14px;
+}
+.summary-row {
+    display:flex;
+    justify-content:space-between;
+    gap:12px;
+    padding: 5px 0;
+    font-size: 0.98rem;
+}
+.summary-row .k {color: var(--muted) !important;}
+.summary-row .v {font-weight: 900;}
+[data-testid="stButton"] > button,
+[data-testid="stDownloadButton"] > button,
+div[data-testid="stFormSubmitButton"] > button {
+    width:100%;
+    border-radius:14px !important;
+    border:1px solid rgba(72,125,193,0.42) !important;
+    background: linear-gradient(180deg, rgba(18,55,110,0.96), rgba(15,44,88,0.96)) !important;
+    color: #f5f9ff !important;
+    font-weight: 900 !important;
+    font-size: 1rem !important;
+    padding: 0.78rem 1rem !important;
+}
+[data-testid="stButton"] > button:hover,
+[data-testid="stDownloadButton"] > button:hover,
+div[data-testid="stFormSubmitButton"] > button:hover {
+    border-color: rgba(109,225,255,0.65) !important;
+    filter: brightness(1.05);
+}
+.stTextInput input {
+    background: rgba(13,38,79,0.92) !important;
+    color: #f5f9ff !important;
+    border: 1px solid rgba(72,125,193,0.42) !important;
+    border-radius: 14px !important;
+}
+[data-testid="stRadio"] label {
+    color: var(--text) !important;
+}
+[data-testid="stRadio"] > label {
+    font-size: 0.92rem !important;
+    font-weight: 800 !important;
+    color: var(--muted) !important;
+}
+[data-testid="stRadio"] [role="radiogroup"] {
     gap: 8px;
 }
-div[data-testid="stRadio"] label {
-    background: var(--panel-2) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 12px !important;
+[data-testid="stRadio"] [role="radiogroup"] label {
+    background: rgba(13,38,79,0.92) !important;
+    border: 1px solid rgba(72,125,193,0.42) !important;
+    border-radius: 14px !important;
     padding: 10px 12px !important;
-    font-size: 1rem !important;
-    color: var(--text) !important;
 }
-div[data-testid="stRadio"] label:hover {
-    border-color: var(--accent) !important;
+[data-testid="stRadio"] [role="radiogroup"] label:hover {
+    border-color: rgba(109,225,255,0.65) !important;
 }
-div[data-testid="stTextInput"] input {
-    background: var(--panel-2) !important;
-    color: var(--text) !important;
-    border: 1px solid var(--border) !important;
-    border-radius: 12px !important;
-}
-div[data-testid="stButton"] > button {
-    width: 100%;
-    border-radius: 12px !important;
-    border: 1px solid var(--border) !important;
-    background: var(--panel-2) !important;
-    color: var(--text) !important;
-    font-weight: 800 !important;
-    font-size: 1rem !important;
-    padding: 0.8rem 1rem !important;
-}
-div[data-testid="stButton"] > button:hover {
-    border-color: var(--accent) !important;
-    background: #15305f !important;
-}
-
-/* Small helper */
-.small-muted {
-    font-size: 0.92rem;
+.stCaption {
     color: var(--muted) !important;
-    line-height: 1.45;
 }
-
-/* Responsive */
+[data-testid="stSidebar"] {
+    background: var(--panel-3);
+}
 @media (max-width: 1100px) {
-    .metric-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    .compare-strip {
-        grid-template-columns: 1fr;
-    }
-    .app-header {
-        flex-direction: column;
-    }
+    .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .compare-strip { grid-template-columns: 1fr; }
+    .traffic-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .hero { flex-direction: column; }
 }
 </style>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
 
-# ──────────────────────────────────────────────
-# DATABASE
-# ──────────────────────────────────────────────
-
+# ---------------------------------------------------------
+# Database helpers
+# ---------------------------------------------------------
 def get_conn():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     return conn
 
+
 def init_db():
     conn = get_conn()
     cur = conn.cursor()
-
-    cur.execute("""
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS settings (
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         )
-    """)
-
-    cur.execute("""
+        """
+    )
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS votes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             voter_name TEXT,
@@ -340,17 +357,19 @@ def init_db():
             testing TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
-    """)
-
+        """
+    )
     defaults = {
         "session_open": "0",
-        "applied": "0",
+        "frozen": "0",
+        "frozen_payload": "",
+        "public_url": DEFAULT_PUBLIC_URL,
     }
     for k, v in defaults.items():
         cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
-
     conn.commit()
     conn.close()
+
 
 def get_setting(key: str, default: str = "") -> str:
     conn = get_conn()
@@ -359,6 +378,7 @@ def get_setting(key: str, default: str = "") -> str:
     row = cur.fetchone()
     conn.close()
     return row["value"] if row else default
+
 
 def set_setting(key: str, value: str):
     conn = get_conn()
@@ -371,23 +391,20 @@ def set_setting(key: str, value: str):
     conn.commit()
     conn.close()
 
+
 def add_vote(voter_name: str, mask: str, distance: str, vaccine: str, closure: str, testing: str):
     conn = get_conn()
     cur = conn.cursor()
-    cur.execute("""
+    cur.execute(
+        """
         INSERT INTO votes (voter_name, mask, distance, vaccine, closure, testing, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (
-        voter_name.strip(),
-        mask,
-        distance,
-        vaccine,
-        closure,
-        testing,
-        datetime.utcnow().isoformat(),
-    ))
+        """,
+        (voter_name.strip(), mask, distance, vaccine, closure, testing, datetime.utcnow().isoformat()),
+    )
     conn.commit()
     conn.close()
+
 
 def clear_votes():
     conn = get_conn()
@@ -396,182 +413,295 @@ def clear_votes():
     conn.commit()
     conn.close()
 
+
 def load_votes() -> pd.DataFrame:
     conn = get_conn()
     df = pd.read_sql_query("SELECT * FROM votes ORDER BY id DESC", conn)
     conn.close()
     return df
 
-def vote_consensus(votes_df: pd.DataFrame) -> dict:
-    defaults = {
-        "mask": "None (0%)",
-        "distance": "None",
-        "vaccine": "0%",
-        "closure": "Open",
-        "testing": "Low",
-    }
-    if votes_df.empty:
-        return defaults
 
-    out = {}
-    for col, fallback in defaults.items():
-        mode = votes_df[col].mode()
-        out[col] = mode.iat[0] if not mode.empty else fallback
-    return out
+# ---------------------------------------------------------
+# URL / QR
+# ---------------------------------------------------------
+def normalize_public_url(url: str) -> str:
+    url = (url or DEFAULT_PUBLIC_URL).strip()
+    if not url:
+        url = DEFAULT_PUBLIC_URL
+    if not url.startswith("http://") and not url.startswith("https://"):
+        url = "https://" + url
+    return url.rstrip("/")
 
-# ──────────────────────────────────────────────
-# ML FORECASTING ENGINE
-# ──────────────────────────────────────────────
 
-HISTORICAL_WEEKS = 26
-FORECAST_WEEKS = 12
+def get_public_url() -> str:
+    try:
+        secret_url = st.secrets.get("PUBLIC_URL", "")
+    except Exception:
+        secret_url = ""
+    saved_url = get_setting("public_url", DEFAULT_PUBLIC_URL)
+    url = normalize_public_url(secret_url or saved_url or DEFAULT_PUBLIC_URL)
+    if url != saved_url:
+        set_setting("public_url", url)
+    return url
 
-def generate_historical(seed: int = 42) -> np.ndarray:
+
+def vote_url() -> str:
+    return f"{get_public_url()}?mode=vote"
+
+
+@st.cache_data(show_spinner=False)
+def make_qr(url: str) -> bytes:
+    qr = qrcode.QRCode(box_size=10, border=1)
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+# ---------------------------------------------------------
+# Forecast model
+# ---------------------------------------------------------
+MASK_EFFECT = {"None (0%)": 1.00, "Low (25%)": 0.92, "Medium (60%)": 0.82, "High (90%)": 0.70}
+DISTANCE_EFFECT = {"None": 1.00, "Mild": 0.93, "Moderate": 0.84, "Strict": 0.74}
+VACCINE_EFFECT = {"0%": 1.00, "30%": 0.90, "60%": 0.78, "90%": 0.62}
+CLOSURE_EFFECT = {"Open": 1.00, "Partial": 0.88, "Full": 0.76}
+TESTING_EFFECT = {"Low": 1.00, "Moderate": 0.96, "High": 0.91}
+
+HIST_WEEKS = 26
+FC_WEEKS = 12
+SEED = 42
+
+
+@st.cache_data(show_spinner=False)
+def generate_historical(seed: int = SEED) -> np.ndarray:
     rng = np.random.default_rng(seed)
-    t = np.linspace(0, 1, HISTORICAL_WEEKS)
-    wave1 = 2000 * np.exp(-((t - 0.25) ** 2) / 0.02)
-    wave2 = 3500 * np.exp(-((t - 0.70) ** 2) / 0.03)
-    base = 400 + wave1 + wave2
-    noise = rng.normal(0, 120, HISTORICAL_WEEKS)
-    return np.clip(base + noise, 50, None).astype(float)
+    t = np.linspace(0, 1, HIST_WEEKS)
+    wave1 = 1500 * np.exp(-((t - 0.28) ** 2) / 0.018)
+    wave2 = 2600 * np.exp(-((t - 0.78) ** 2) / 0.024)
+    baseline = 520 + 180 * np.sin(2 * np.pi * t * 1.2)
+    noise = rng.normal(0, 90, HIST_WEEKS)
+    history = np.clip(baseline + wave1 + wave2 + noise, 120, None)
+    return history.astype(float)
 
-def holt_winters(series: np.ndarray, n_ahead: int,
-                 alpha: float = 0.35, beta: float = 0.15,
-                 season_len: int = 4) -> np.ndarray:
-    n = len(series)
+
+def holt_winters(series: np.ndarray, n_ahead: int, alpha: float = 0.33, beta: float = 0.16, season_len: int = 4):
     level = series[:season_len].mean()
     trend = (series[season_len:2 * season_len].mean() - level) / season_len
-    seasons = series[:season_len] - level
-
+    seasons = list(series[:season_len] - level)
+    n = len(series)
     for t in range(n):
         s_idx = t % season_len
         prev_level = level
         level = alpha * (series[t] - seasons[s_idx]) + (1 - alpha) * (level + trend)
         trend = beta * (level - prev_level) + (1 - beta) * trend
         seasons[s_idx] = series[t] - prev_level
-
-    forecast = np.zeros(n_ahead)
+    fc = np.zeros(n_ahead)
     for i in range(n_ahead):
-        forecast[i] = level + (i + 1) * trend + seasons[(n + i) % season_len]
-    return np.clip(forecast, 0, None)
+        fc[i] = level + (i + 1) * trend + seasons[(n + i) % season_len]
+    return np.clip(fc, 0, None)
 
-def linear_trend(series: np.ndarray, n_ahead: int, window: int = 8) -> np.ndarray:
-    tail = series[-window:]
+
+def linear_trend(series: np.ndarray, n_ahead: int, window: int = 8):
+    y = series[-window:]
     x = np.arange(window, dtype=float)
-    xm, ym = x.mean(), tail.mean()
-    slope = np.sum((x - xm) * (tail - ym)) / np.sum((x - xm) ** 2)
-    intercept = ym - slope * xm
-    fut = np.arange(window, window + n_ahead, dtype=float)
-    return np.clip(intercept + slope * fut, 0, None)
+    slope = np.polyfit(x, y, 1)[0]
+    intercept = y.mean() - slope * x.mean()
+    fut_x = np.arange(window, window + n_ahead, dtype=float)
+    fc = intercept + slope * fut_x
+    return np.clip(fc, 0, None)
 
-def ensemble_forecast(series: np.ndarray, n_ahead: int,
-                      hw_weight: float = 0.65) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+
+def ensemble_forecast(series: np.ndarray, n_ahead: int):
     hw = holt_winters(series, n_ahead)
     lt = linear_trend(series, n_ahead)
-    mean = hw_weight * hw + (1 - hw_weight) * lt
-    sigma = mean * (0.06 + 0.012 * np.arange(n_ahead))
-    return mean, mean - sigma, mean + sigma
+    mean = 0.67 * hw + 0.33 * lt
+    sigma = np.maximum(45, mean * (0.08 + 0.01 * np.arange(n_ahead)))
+    return mean, np.clip(mean - sigma, 0, None), mean + sigma
 
-MASK_EFFECT = {"None (0%)": 1.0, "Low (25%)": 0.87, "Medium (60%)": 0.70, "High (90%)": 0.52}
-DISTANCE_EFFECT = {"None": 1.0, "Mild": 0.90, "Moderate": 0.76, "Strict": 0.60}
-VACCINE_EFFECT = {"0%": 1.0, "30%": 0.82, "60%": 0.62, "90%": 0.38}
-CLOSURE_EFFECT = {"Open": 1.0, "Partial": 0.83, "Full": 0.65}
-TESTING_EFFECT = {"Low": 1.0, "Moderate": 0.93, "High": 0.88}
 
-def compute_multiplier(mask, distance, vaccine, closure, testing) -> float:
+def default_consensus():
+    return {
+        "mask": "None (0%)",
+        "distance": "None",
+        "vaccine": "0%",
+        "closure": "Open",
+        "testing": "Low",
+    }
+
+
+def vote_consensus(votes_df: pd.DataFrame) -> dict:
+    if votes_df.empty:
+        return default_consensus()
+    out = {}
+    for col, default in default_consensus().items():
+        mode = votes_df[col].mode()
+        out[col] = mode.iat[0] if not mode.empty else default
+    return out
+
+
+def compute_multiplier(consensus: dict) -> float:
     return (
-        MASK_EFFECT[mask]
-        * DISTANCE_EFFECT[distance]
-        * VACCINE_EFFECT[vaccine]
-        * CLOSURE_EFFECT[closure]
-        * TESTING_EFFECT[testing]
+        MASK_EFFECT[consensus["mask"]]
+        * DISTANCE_EFFECT[consensus["distance"]]
+        * VACCINE_EFFECT[consensus["vaccine"]]
+        * CLOSURE_EFFECT[consensus["closure"]]
+        * TESTING_EFFECT[consensus["testing"]]
     )
 
-def apply_interventions(base_fc: np.ndarray, lo: np.ndarray, hi: np.ndarray,
-                        mult: float) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    ramp = np.linspace(1.0, mult, min(4, len(base_fc)))
+
+def apply_interventions(base_fc, base_lo, base_hi, mult: float):
+    ramp_len = min(4, len(base_fc))
+    ramp = np.linspace(1.0, mult, ramp_len)
     full = np.full(len(base_fc), mult)
-    full[:len(ramp)] = ramp
-    return base_fc * full, lo * full, hi * full
+    full[:ramp_len] = ramp
+    cur_fc = base_fc * full
+    cur_lo = base_lo * full
+    cur_hi = base_hi * full
+    return cur_fc, cur_lo, cur_hi
+
 
 def metrics_from(fc: np.ndarray) -> dict:
     peak_val = int(fc.max())
     peak_week = int(fc.argmax()) + 1
     total = int(fc.sum())
+    week1 = int(fc[0])
+    week_last = int(fc[-1])
     trend = "↓ Declining" if fc[-1] < fc[0] else "↑ Growing"
-    trend_pct = abs(fc[-1] - fc[0]) / (fc[0] + 1e-6) * 100
+    trend_pct = abs(fc[-1] - fc[0]) / max(fc[0], 1) * 100
     return {
         "peak_val": peak_val,
         "peak_week": peak_week,
         "total": total,
+        "week1": week1,
+        "week_last": week_last,
         "trend": trend,
         "trend_pct": round(trend_pct, 1),
-        "week12": int(fc[-1]),
     }
 
-# ──────────────────────────────────────────────
-# QR CODE
-# ──────────────────────────────────────────────
 
-@st.cache_data
-def make_qr(url: str) -> bytes:
-    img = qrcode.make(url)
-    buf = io.BytesIO()
-    img.save(buf)
-    return buf.getvalue()
+def driver_table(consensus: dict) -> pd.DataFrame:
+    rows = [
+        ("Masking", (1 - MASK_EFFECT[consensus["mask"]]) * 100),
+        ("Distancing", (1 - DISTANCE_EFFECT[consensus["distance"]]) * 100),
+        ("Vaccination", (1 - VACCINE_EFFECT[consensus["vaccine"]]) * 100),
+        ("Closures", (1 - CLOSURE_EFFECT[consensus["closure"]]) * 100),
+        ("Testing", (1 - TESTING_EFFECT[consensus["testing"]]) * 100),
+    ]
+    return pd.DataFrame(rows, columns=["driver", "reduction_pct"]).sort_values("reduction_pct")
 
-qr_bytes = make_qr(VOTE_URL)
 
-# ──────────────────────────────────────────────
-# CHART
-# ──────────────────────────────────────────────
+# ---------------------------------------------------------
+# Spatial helpers
+# ---------------------------------------------------------
+METRO_ZONES = pd.DataFrame(
+    {
+        "zone": [
+            "Vancouver",
+            "Surrey",
+            "Burnaby",
+            "Richmond",
+            "Coquitlam",
+            "North Vancouver",
+            "New Westminster",
+            "Delta",
+        ],
+        "lat": [49.2827, 49.1913, 49.2488, 49.1666, 49.2838, 49.3200, 49.2057, 49.0847],
+        "lon": [-123.1207, -122.8490, -122.9805, -123.1336, -122.7932, -123.0720, -122.9110, -123.0580],
+        "weight": [1.35, 1.15, 1.00, 0.92, 0.95, 0.82, 0.74, 0.70],
+    }
+)
 
-def build_chart(history, base_fc, cur_fc, cur_lo, cur_hi, date_labels_hist, date_labels_fc, applied, mult):
+BC_REGIONS = pd.DataFrame(
+    {
+        "region": ["Lower Mainland", "Fraser Valley", "Vancouver Island", "Interior", "North"],
+        "lat": [49.18, 49.10, 49.68, 50.90, 54.20],
+        "lon": [-122.95, -121.90, -124.70, -119.50, -125.00],
+        "weight": [1.00, 0.62, 0.55, 0.75, 0.38],
+    }
+)
+
+
+def distribute_cases(total_cases: float, base_df: pd.DataFrame, seed: int = SEED) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    weights = base_df["weight"].to_numpy(dtype=float)
+    weights = weights / weights.sum()
+    jitter = rng.uniform(0.94, 1.07, len(base_df))
+    raw = total_cases * weights * jitter
+    raw = raw / raw.sum() * total_cases
+    out = base_df.copy()
+    out["cases"] = np.maximum(10, raw).round().astype(int)
+    max_cases = max(out["cases"].max(), 1)
+    out["risk"] = pd.cut(
+        out["cases"] / max_cases,
+        bins=[-np.inf, 0.35, 0.68, np.inf],
+        labels=["Green", "Yellow", "Red"],
+    ).astype(str)
+    return out
+
+
+def spread_light_color(label: str) -> str:
+    return {"Green": "#22c55e", "Yellow": "#f59e0b", "Red": "#ef4444"}.get(label, "#22c55e")
+
+
+def provincial_lights(cur_total: int, multiplier: float) -> pd.DataFrame:
+    total = max(1000, cur_total * 2.2)
+    df = distribute_cases(total, BC_REGIONS, seed=SEED + 11)
+    return df
+
+
+# ---------------------------------------------------------
+# Plot builders
+# ---------------------------------------------------------
+def build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_labels, fc_labels, live_mode=True):
     fig = go.Figure()
-
-    fig.add_trace(go.Scatter(
-        x=date_labels_fc + date_labels_fc[::-1],
-        y=list(cur_hi) + list(cur_lo[::-1]),
-        fill='toself',
-        fillcolor='rgba(71,179,255,0.10)',
-        line=dict(width=0),
-        showlegend=False,
-        hoverinfo='skip',
-        name='CI band',
-    ))
-
-    if applied:
-        fig.add_trace(go.Scatter(
-            x=date_labels_fc,
+    fig.add_trace(
+        go.Scatter(
+            x=fc_labels + fc_labels[::-1],
+            y=list(cur_hi) + list(cur_lo[::-1]),
+            fill="toself",
+            fillcolor="rgba(67,180,255,0.12)",
+            line=dict(width=0),
+            showlegend=False,
+            hoverinfo="skip",
+            name="Prediction band",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=fc_labels,
             y=base_fc,
-            mode='lines',
-            name='Baseline (no intervention)',
-            line=dict(color='rgba(245,158,11,0.65)', width=2, dash='dot'),
-            hovertemplate='<b>Baseline</b>: %{y:,.0f}<extra></extra>',
-        ))
+            mode="lines",
+            name="Baseline (no intervention)",
+            line=dict(color="rgba(245,158,11,0.9)", width=2.2, dash="dot"),
+            hovertemplate="<b>Baseline</b>: %{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=hist_labels,
+            y=history,
+            mode="lines+markers",
+            name="Historical cases",
+            line=dict(color="#8aa7d8", width=2.3),
+            marker=dict(size=5, color="#8aa7d8"),
+            hovertemplate="<b>%{x}</b><br>Observed: %{y:,.0f}<extra></extra>",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=fc_labels,
+            y=cur_fc,
+            mode="lines+markers",
+            name="Live prediction",
+            line=dict(color="#ff5c4d", width=3.0),
+            marker=dict(size=5, color="#ff5c4d"),
+            hovertemplate="<b>%{x}</b><br>Predicted: %{y:,.0f}<extra></extra>",
+        )
+    )
 
-    fig.add_trace(go.Scatter(
-        x=date_labels_hist,
-        y=history,
-        mode='lines+markers',
-        name='Historical cases',
-        line=dict(color='#7e90b8', width=2),
-        marker=dict(size=5, color='#7e90b8'),
-        hovertemplate='<b>%{x}</b><br>Cases: %{y:,.0f}<extra></extra>',
-    ))
-
-    fc_color = '#47b3ff' if not applied else ('#22c55e' if mult < 0.75 else '#f59e0b' if mult < 0.92 else '#ef4444')
-    fig.add_trace(go.Scatter(
-        x=date_labels_fc,
-        y=cur_fc,
-        mode='lines+markers',
-        name='ML Forecast',
-        line=dict(color=fc_color, width=3.5),
-        marker=dict(size=6, color=fc_color),
-        hovertemplate='<b>%{x}</b><br>Forecast: %{y:,.0f}<extra></extra>',
-    ))
-
-    now_x = date_labels_hist[-1]
+    now_x = hist_labels[-1]
     fig.add_shape(
         type="line",
         x0=now_x,
@@ -580,7 +710,7 @@ def build_chart(history, base_fc, cur_fc, cur_lo, cur_hi, date_labels_hist, date
         y1=1,
         xref="x",
         yref="paper",
-        line=dict(color='rgba(255,255,255,0.18)', width=1, dash='dash'),
+        line=dict(color="rgba(255,255,255,0.18)", width=1.2, dash="dash"),
     )
     fig.add_annotation(
         x=now_x,
@@ -591,259 +721,424 @@ def build_chart(history, base_fc, cur_fc, cur_lo, cur_hi, date_labels_hist, date
         showarrow=False,
         xanchor="left",
         yanchor="bottom",
-        font=dict(size=10, color='rgba(255,255,255,0.55)')
+        font=dict(size=11, color="rgba(255,255,255,0.55)"),
     )
-
+    subtitle = "Live class votes are already shaping the red prediction line." if live_mode else "Scenario frozen from the last live class consensus."
+    fig.add_annotation(
+        xref="paper",
+        yref="paper",
+        x=0,
+        y=1.13,
+        text=subtitle,
+        showarrow=False,
+        font=dict(size=12, color="#b4c6e8"),
+        align="left",
+    )
     fig.update_layout(
-        paper_bgcolor='rgba(0,0,0,0)',
-        plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(l=0, r=0, t=10, b=0),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=8, r=8, t=40, b=8),
         height=360,
-        font=dict(color='#d6e2ff', size=13),
+        font=dict(color="#eef4ff", size=13),
         legend=dict(
-            orientation='h',
-            yanchor='bottom',
-            y=1.02,
-            xanchor='left',
+            orientation="h",
+            yanchor="bottom",
+            y=1.01,
+            xanchor="left",
             x=0,
-            font=dict(size=12, color='#c6d4f4'),
-            bgcolor='rgba(0,0,0,0)',
+            font=dict(size=12),
+            bgcolor="rgba(0,0,0,0)",
         ),
         xaxis=dict(
             showgrid=True,
-            gridcolor='rgba(255,255,255,0.05)',
-            tickcolor='rgba(0,0,0,0)',
-            linecolor='rgba(255,255,255,0.08)',
-            tickfont=dict(size=12),
-            tickangle=-30,
+            gridcolor="rgba(255,255,255,0.06)",
+            tickfont=dict(size=11),
+            tickangle=-35,
+            linecolor="rgba(255,255,255,0.08)",
+            zeroline=False,
         ),
         yaxis=dict(
             showgrid=True,
-            gridcolor='rgba(255,255,255,0.05)',
-            tickcolor='rgba(0,0,0,0)',
-            linecolor='rgba(255,255,255,0.08)',
-            tickfont=dict(size=12),
-            tickformat=',d',
+            gridcolor="rgba(255,255,255,0.06)",
+            tickfont=dict(size=11),
+            linecolor="rgba(255,255,255,0.08)",
+            tickformat=",d",
+            zeroline=False,
         ),
-        hovermode='x unified',
+        hovermode="x unified",
     )
-
     return fig
 
-# ──────────────────────────────────────────────
-# PAGES
-# ──────────────────────────────────────────────
 
+def build_driver_chart(drivers_df: pd.DataFrame):
+    fig = go.Figure(
+        go.Bar(
+            x=drivers_df["reduction_pct"],
+            y=drivers_df["driver"],
+            orientation="h",
+            marker=dict(color="#43b4ff"),
+            text=[f"-{x:.0f}%" for x in drivers_df["reduction_pct"]],
+            textposition="outside",
+        )
+    )
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=8, r=8, t=10, b=8),
+        height=280,
+        font=dict(color="#eef4ff", size=13),
+        xaxis=dict(title="Reduction versus no intervention", gridcolor="rgba(255,255,255,0.06)", ticksuffix="%"),
+        yaxis=dict(showgrid=False),
+    )
+    return fig
+
+
+def build_scatter_geo(df: pd.DataFrame, title: str, subtitle: str, lon_range, lat_range, size_scale: float = 1.0, names_col: str = "zone"):
+    colors = df["risk"].map({"Green": "#22c55e", "Yellow": "#f59e0b", "Red": "#ef4444"})
+    max_cases = max(df["cases"].max(), 1)
+    sizes = 16 + (df["cases"] / max_cases) * 34 * size_scale
+    hover_text = [f"<b>{name}</b><br>Cases: {cases:,}<br>Risk: {risk}" for name, cases, risk in zip(df[names_col], df["cases"], df["risk"])]
+    fig = go.Figure(
+        go.Scattergeo(
+            lon=df["lon"],
+            lat=df["lat"],
+            text=df[names_col],
+            customdata=df["cases"],
+            mode="markers+text",
+            textposition="top center",
+            hovertemplate="%{hovertext}<extra></extra>",
+            hovertext=hover_text,
+            marker=dict(
+                size=sizes,
+                color=colors,
+                line=dict(width=1.5, color="#ffffff"),
+                opacity=0.85,
+            ),
+        )
+    )
+    fig.update_geos(
+        scope="north america",
+        projection_type="mercator",
+        showland=True,
+        landcolor="#0b2146",
+        showocean=True,
+        oceancolor="#05101f",
+        showlakes=True,
+        lakecolor="#05101f",
+        coastlinecolor="#4d6fa6",
+        countrycolor="#4d6fa6",
+        subunitcolor="#3c5f96",
+        bgcolor="rgba(0,0,0,0)",
+        lonaxis_range=lon_range,
+        lataxis_range=lat_range,
+        showcountries=True,
+        showsubunits=True,
+    )
+    fig.update_layout(
+        title=dict(text=f"<b>{title}</b><br><span style='font-size:12px;color:#b4c6e8'>{subtitle}</span>", x=0.02, y=0.97, font=dict(size=16)),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=0, r=0, t=48, b=0),
+        height=360,
+        font=dict(color="#eef4ff"),
+    )
+    return fig
+
+
+# ---------------------------------------------------------
+# Page renderers
+# ---------------------------------------------------------
 def render_vote_page():
+    st_autorefresh(interval=2500, limit=None, key="vote_refresh")
     session_open = get_setting("session_open", "0") == "1"
 
-    st.markdown("""
-    <div class="app-header">
-      <div class="header-left">
-        <h1>📱 Vote on interventions</h1>
-        <p>Choose how the class wants to respond to the outbreak. Your vote affects the presenter dashboard.</p>
-      </div>
-      <div class="status-chip">Audience page</div>
-    </div>
-    """, unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="hero">
+            <div>
+                <div class="hero-title">📱 Vote on outbreak controls</div>
+                <div class="hero-sub">Pick the class response. The presenter dashboard and maps update live every few seconds.</div>
+            </div>
+            <div class="hero-pill">Audience voting page</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     if not session_open:
-        st.warning("Voting is currently closed. Wait for the presenter to open the session.")
+        st.warning("Voting is currently closed. Ask the presenter to open the session.")
         return
 
     with st.form("vote_form", clear_on_submit=True):
         voter_name = st.text_input("Your name or nickname", placeholder="Optional")
-
-        mask = st.radio("Mask wearing", ["None (0%)", "Low (25%)", "Medium (60%)", "High (90%)"])
-        distance = st.radio("Social distancing", ["None", "Mild", "Moderate", "Strict"])
-        vaccine = st.radio("Vaccination rate", ["0%", "30%", "60%", "90%"])
-        closure = st.radio("School / work closure", ["Open", "Partial", "Full"])
-        testing = st.radio("Testing intensity", ["Low", "Moderate", "High"])
-
-        submitted = st.form_submit_button("Submit vote")
+        col1, col2 = st.columns(2)
+        with col1:
+            mask = st.radio("Mask wearing", ["None (0%)", "Low (25%)", "Medium (60%)", "High (90%)"])
+            distance = st.radio("Social distancing", ["None", "Mild", "Moderate", "Strict"])
+            vaccine = st.radio("Vaccination rate", ["0%", "30%", "60%", "90%"])
+        with col2:
+            closure = st.radio("School / workplace closure", ["Open", "Partial", "Full"])
+            testing = st.radio("Testing intensity", ["Low", "Moderate", "High"])
+            st.markdown('<div class="panel"><div class="small-note"><b>Tip:</b> Stronger controls lower the next-week prediction and can flip regions from red to yellow or green.</div></div>', unsafe_allow_html=True)
+        submitted = st.form_submit_button("Submit my vote", use_container_width=True)
 
     if submitted:
         add_vote(voter_name, mask, distance, vaccine, closure, testing)
-        st.success("Vote submitted. Look at the main screen to see the forecast update.")
+        st.success("Vote submitted. The presenter dashboard should update in a few seconds.")
+        st.rerun()
 
 
 def render_dashboard():
-    history = generate_historical()
-    base_fc, base_lo, base_hi = ensemble_forecast(history, FORECAST_WEEKS)
-
-    start_date = datetime(2024, 1, 1)
-    hist_dates = [start_date + timedelta(weeks=i) for i in range(HISTORICAL_WEEKS)]
-    fc_dates = [hist_dates[-1] + timedelta(weeks=i + 1) for i in range(FORECAST_WEEKS)]
-    date_labels_hist = [d.strftime("%b %d") for d in hist_dates]
-    date_labels_fc = [d.strftime("%b %d") for d in fc_dates]
+    st_autorefresh(interval=2500, limit=None, key="dashboard_refresh")
 
     votes_df = load_votes()
-    consensus = vote_consensus(votes_df)
-
+    live_consensus = vote_consensus(votes_df)
     session_open = get_setting("session_open", "0") == "1"
-    applied = get_setting("applied", "0") == "1"
+    frozen = get_setting("frozen", "0") == "1"
+    frozen_payload = get_setting("frozen_payload", "")
 
-    mult = compute_multiplier(
-        consensus["mask"],
-        consensus["distance"],
-        consensus["vaccine"],
-        consensus["closure"],
-        consensus["testing"],
+    display_consensus = live_consensus.copy()
+    live_mode = True
+    if frozen and frozen_payload and not session_open:
+        try:
+            display_consensus = json.loads(frozen_payload)
+            live_mode = False
+        except Exception:
+            display_consensus = live_consensus.copy()
+
+    public_url = get_public_url()
+    qr_bytes = make_qr(vote_url())
+
+    history = generate_historical()
+    base_fc, base_lo, base_hi = ensemble_forecast(history, FC_WEEKS)
+    multiplier = compute_multiplier(display_consensus)
+    cur_fc, cur_lo, cur_hi = apply_interventions(base_fc.copy(), base_lo.copy(), base_hi.copy(), multiplier)
+
+    base_m = metrics_from(base_fc)
+    cur_m = metrics_from(cur_fc)
+    drivers_df = driver_table(display_consensus)
+
+    hist_dates = [datetime(2024, 1, 7) + timedelta(weeks=i) for i in range(HIST_WEEKS)]
+    fc_dates = [hist_dates[-1] + timedelta(weeks=i + 1) for i in range(FC_WEEKS)]
+    hist_labels = [d.strftime("%b %d") for d in hist_dates]
+    fc_labels = [d.strftime("%b %d") for d in fc_dates]
+
+    last_week_total = int(history[-1])
+    next_week_total = cur_m["week1"]
+    metro_last = distribute_cases(last_week_total, METRO_ZONES, seed=SEED)
+    metro_next = distribute_cases(next_week_total, METRO_ZONES, seed=SEED + 7)
+    bc_df = provincial_lights(next_week_total, multiplier)
+
+    peak_delta = cur_m["peak_val"] - base_m["peak_val"]
+    total_delta = cur_m["total"] - base_m["total"]
+    trend_color = "#22c55e" if "↓" in cur_m["trend"] else "#ef4444"
+    mult_pct = round((1 - multiplier) * 100, 1)
+
+    st.markdown('<div class="app-shell">', unsafe_allow_html=True)
+    st.markdown(
+        f"""
+        <div class="hero">
+            <div>
+                <div class="hero-title"><span style="color:#ef4444;">•</span> Metro Vancouver COVID Forecaster</div>
+                <div class="hero-sub">ML time-series ensemble · Holt-Winters + linear trend · <b>{'LIVE VOTING OPEN' if session_open else ('SCENARIO APPLIED' if not live_mode else 'SESSION CLOSED')}</b> · {len(votes_df)} votes cast</div>
+            </div>
+            <div class="hero-pill">Presenter dashboard</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    if applied:
-        cur_fc, cur_lo, cur_hi = apply_interventions(base_fc.copy(), base_lo.copy(), base_hi.copy(), mult)
-    else:
-        cur_fc, cur_lo, cur_hi = base_fc.copy(), base_lo.copy(), base_hi.copy()
+    st.markdown(
+        f"""
+        <div class="metric-grid">
+            <div class="metric-card">
+                <div class="metric-label">Peak weekly cases</div>
+                <div class="metric-value">{cur_m['peak_val']:,}</div>
+                <div class="metric-sub">Week {cur_m['peak_week']} · {'↓' if peak_delta < 0 else '↑' if peak_delta > 0 else '—'} {abs(peak_delta):,} vs baseline</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">12-week total</div>
+                <div class="metric-value">{cur_m['total']:,}</div>
+                <div class="metric-sub">{'↓' if total_delta < 0 else '↑' if total_delta > 0 else '—'} {abs(total_delta):,} vs baseline</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Forecast trend</div>
+                <div class="metric-value" style="font-size:1.7rem;color:{trend_color}">{cur_m['trend']}</div>
+                <div class="metric-sub">{cur_m['trend_pct']}% over forecast horizon</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Intervention effect</div>
+                <div class="metric-value">-{mult_pct}%</div>
+                <div class="metric-sub">Combined class multiplier: ×{multiplier:.2f}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
-    cur_m = metrics_from(cur_fc)
-    base_m = metrics_from(base_fc)
+    left, right = st.columns([2.65, 1.0], gap="large")
 
-    peak_change = cur_m["peak_val"] - base_m["peak_val"]
-    total_change = cur_m["total"] - base_m["total"]
-    peak_arrow = "↓" if peak_change < 0 else ("↑" if peak_change > 0 else "—")
-    total_arrow = "↓" if total_change < 0 else ("↑" if total_change > 0 else "—")
-    peak_col = "#22c55e" if peak_change < 0 else ("#ef4444" if peak_change > 0 else "#c7d2fe")
-    total_col = "#22c55e" if total_change < 0 else ("#ef4444" if total_change > 0 else "#c7d2fe")
-    trend_color = "#22c55e" if "↓" in cur_m["trend"] else "#ef4444"
-    mult_pct = round((1 - mult) * 100, 1)
+    with left:
+        st.markdown('<div class="section-title">ML forecast · weekly new cases · Metro Vancouver</div>', unsafe_allow_html=True)
+        forecast_fig = build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_labels, fc_labels, live_mode=live_mode)
+        st.plotly_chart(forecast_fig, use_container_width=True, config={"displayModeBar": False})
 
-    status_tag = "VOTING OPEN" if session_open else "SESSION CLOSED"
-    status_color = "#22c55e" if session_open else "#94a3b8"
+        map_a, map_b = st.columns(2)
+        with map_a:
+            st.plotly_chart(
+                build_scatter_geo(
+                    metro_last,
+                    title="Observed map · last week",
+                    subtitle=f"These are the most recent observed cases feeding the model ({last_week_total:,} total).",
+                    lon_range=[-123.35, -122.70],
+                    lat_range=[49.00, 49.40],
+                    size_scale=1.0,
+                    names_col="zone",
+                ),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+        with map_b:
+            st.plotly_chart(
+                build_scatter_geo(
+                    metro_next,
+                    title="Predicted map · next week",
+                    subtitle=f"Live class votes shift the next-week prediction to {next_week_total:,} cases.",
+                    lon_range=[-123.35, -122.70],
+                    lat_range=[49.00, 49.40],
+                    size_scale=1.0,
+                    names_col="zone",
+                ),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
 
-    st.markdown(f"""
-    <div class="app-header">
-      <div class="header-left">
-        <h1><span class="live-dot"></span>Metro Vancouver COVID Forecaster</h1>
-        <p>
-          ML time-series ensemble · Holt-Winters + linear trend ·
-          <span style="color:{status_color};font-weight:800;">{status_tag}</span> ·
-          {len(votes_df)} votes cast
-        </p>
-      </div>
-      <div class="status-chip">Presenter dashboard</div>
-    </div>
-    """, unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Provincial spread lights and model drivers</div>', unsafe_allow_html=True)
+        m1, m2 = st.columns([1.45, 1.0], gap="large")
+        with m1:
+            st.plotly_chart(
+                build_scatter_geo(
+                    bc_df.rename(columns={"region": "zone"}),
+                    title="BC impact map",
+                    subtitle="Red = heavier spread, yellow = moderate spread, green = lower spread.",
+                    lon_range=[-139.0, -114.0],
+                    lat_range=[48.0, 60.0],
+                    size_scale=0.8,
+                    names_col="zone",
+                ),
+                use_container_width=True,
+                config={"displayModeBar": False},
+            )
+            traffic_html = '<div class="traffic-grid">'
+            for _, row in bc_df.iterrows():
+                traffic_html += f'''
+                <div class="traffic-card">
+                    <div class="traffic-dot" style="background:{spread_light_color(row['risk'])};"></div>
+                    <div class="traffic-name">{row['region']}</div>
+                    <div class="traffic-val">{int(row['cases']):,} cases · {row['risk']}</div>
+                </div>
+                '''
+            traffic_html += '</div>'
+            st.markdown(traffic_html, unsafe_allow_html=True)
 
-    st.markdown(f"""
-    <div class="metric-grid">
-      <div class="metric-card">
-        <div class="label">Peak weekly cases</div>
-        <div class="value" style="color:{peak_col}">{cur_m['peak_val']:,}</div>
-        <div class="sub">Week {cur_m['peak_week']} · {peak_arrow} {abs(peak_change):,} vs baseline</div>
-      </div>
-      <div class="metric-card">
-        <div class="label">12-week total</div>
-        <div class="value" style="color:{total_col}">{cur_m['total']:,}</div>
-        <div class="sub">{total_arrow} {abs(total_change):,} vs baseline</div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Forecast trend</div>
-        <div class="value" style="font-size:1.5rem;color:{trend_color}">{cur_m['trend']}</div>
-        <div class="sub">{cur_m['trend_pct']}% over forecast horizon</div>
-      </div>
-      <div class="metric-card">
-        <div class="label">Intervention effect</div>
-        <div class="value" style="color:#47b3ff">−{mult_pct}%</div>
-        <div class="sub">Combined vote multiplier: ×{mult:.2f}</div>
-      </div>
-    </div>
-    """, unsafe_allow_html=True)
+        with m2:
+            st.plotly_chart(build_driver_chart(drivers_df), use_container_width=True, config={"displayModeBar": False})
+            st.markdown(
+                '<div class="panel"><div class="small-note"><b>How to read this:</b> the left Metro map shows the most recent observed cases. The right Metro map shows the model’s next-week prediction after applying the current class consensus. The BC spread lights help kids quickly interpret which regions are in a green, yellow, or red state. The driver chart shows which chosen controls are doing the most to push spread down.</div></div>',
+                unsafe_allow_html=True,
+            )
 
-    col_main, col_side = st.columns([2.6, 1], gap="large")
-
-    with col_main:
-        st.markdown('<div class="section-label">ML forecast · weekly new cases · Metro Vancouver</div>', unsafe_allow_html=True)
-        fig = build_chart(
-            history, base_fc, cur_fc, cur_lo, cur_hi,
-            date_labels_hist, date_labels_fc, applied, mult
+        st.markdown('<div class="section-title">Before / after intervention</div>', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="compare-strip">
+                <div class="compare-card before-card">
+                    <div class="compare-label">Before votes (baseline)</div>
+                    <div class="compare-row">Peak weekly cases <span>{base_m['peak_val']:,}</span></div>
+                    <div class="compare-row">12-week total <span>{base_m['total']:,}</span></div>
+                    <div class="compare-row">Week 1 prediction <span>{base_m['week1']:,}</span></div>
+                    <div class="compare-row">Multiplier <span>×1.00</span></div>
+                </div>
+                <div class="compare-card after-card">
+                    <div class="compare-label">After votes (current)</div>
+                    <div class="compare-row">Peak weekly cases <span>{cur_m['peak_val']:,}</span></div>
+                    <div class="compare-row">12-week total <span>{cur_m['total']:,}</span></div>
+                    <div class="compare-row">Week 1 prediction <span>{cur_m['week1']:,}</span></div>
+                    <div class="compare-row">Multiplier <span>×{multiplier:.2f}</span></div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-        st.plotly_chart(fig, use_container_width=True, config={"displayModeBar": False})
+        st.markdown(
+            '<div class="banner-note"><b>How the ML model works:</b> the app first learns the outbreak shape from historical weekly cases using a weighted ensemble of Holt-Winters exponential smoothing and a linear trend model. Then the current class votes act like policy parameters, reducing the baseline forecast through a combined multiplier that ramps in over the first four weeks.</div>',
+            unsafe_allow_html=True,
+        )
 
-        st.markdown('<div class="section-label">Before / after intervention</div>', unsafe_allow_html=True)
+    with right:
+        st.markdown('<div class="section-title">Scan to vote</div>', unsafe_allow_html=True)
+        st.image(qr_bytes, width=210)
+        st.caption(vote_url())
+        st.download_button("Download QR", qr_bytes, file_name="covid_vote_qr.png", mime="image/png")
 
-        st.markdown(f"""
-        <div class="compare-strip">
-          <div class="compare-card before-card">
-            <div class="c-label" style="color:#f59e0b">Before votes (baseline)</div>
-            <div class="c-row">Peak weekly cases <span>{base_m['peak_val']:,}</span></div>
-            <div class="c-row">12-week total <span>{base_m['total']:,}</span></div>
-            <div class="c-row">Week 12 cases <span>{base_m['week12']:,}</span></div>
-            <div class="c-row">Multiplier <span>×1.00</span></div>
-          </div>
-          <div class="compare-card after-card">
-            <div class="c-label" style="color:#47b3ff">After votes (current)</div>
-            <div class="c-row">Peak weekly cases <span>{cur_m['peak_val']:,}</span></div>
-            <div class="c-row">12-week total <span>{cur_m['total']:,}</span></div>
-            <div class="c-row">Week 12 cases <span>{cur_m['week12']:,}</span></div>
-            <div class="c-row">Multiplier <span>×{mult:.2f}</span></div>
-          </div>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("""
-        <div class="insight-banner">
-        <b>How the ML model works:</b> The forecast is a <b>weighted ensemble</b> of
-        <b>Holt-Winters exponential smoothing</b> (65%) and a <b>linear trend regressor</b> (35%).
-        Intervention votes apply a <b>multiplier</b> that ramps in over 4 weeks, reflecting real-world delay
-        between policy change and outbreak impact.
-        </div>
-        """, unsafe_allow_html=True)
-
-    with col_side:
-        st.markdown('<div class="section-label">Scan to vote</div>', unsafe_allow_html=True)
-        st.image(qr_bytes, width=185)
-        st.caption(VOTE_URL)
-
-        st.markdown('<div class="section-label" style="margin-top:18px;">Session</div>', unsafe_allow_html=True)
-
+        st.markdown('<div class="section-title">Session</div>', unsafe_allow_html=True)
         if session_open:
             if st.button("Close voting session", use_container_width=True):
                 set_setting("session_open", "0")
                 st.rerun()
-            st.markdown(
-                f'<div class="small-muted" style="margin-top:8px;color:#22c55e !important;">Open · {len(votes_df)} votes received</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown(f'<div class="vote-stat">Open · {len(votes_df)} votes received · dashboard auto-refreshes every 2.5s</div>', unsafe_allow_html=True)
         else:
             if st.button("Open voting session", use_container_width=True):
                 set_setting("session_open", "1")
-                set_setting("applied", "0")
+                set_setting("frozen", "0")
+                set_setting("frozen_payload", "")
                 st.rerun()
-            st.markdown(
-                '<div class="small-muted" style="margin-top:8px;">Session closed</div>',
-                unsafe_allow_html=True,
-            )
+            st.markdown('<div class="vote-stat">Closed · open the session to accept student votes</div>', unsafe_allow_html=True)
 
-        st.markdown('<div class="section-label" style="margin-top:18px;">Current class consensus</div>', unsafe_allow_html=True)
-        st.markdown(f"""
-        <div class="panel">
-          <div class="small-muted"><b>Mask:</b> {consensus['mask']}</div>
-          <div class="small-muted"><b>Distance:</b> {consensus['distance']}</div>
-          <div class="small-muted"><b>Vaccination:</b> {consensus['vaccine']}</div>
-          <div class="small-muted"><b>Closure:</b> {consensus['closure']}</div>
-          <div class="small-muted"><b>Testing:</b> {consensus['testing']}</div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown('<div class="section-title">Current class consensus</div>', unsafe_allow_html=True)
+        st.markdown(
+            f"""
+            <div class="summary-box">
+                <div class="summary-row"><div class="k">Mask</div><div class="v">{display_consensus['mask']}</div></div>
+                <div class="summary-row"><div class="k">Distance</div><div class="v">{display_consensus['distance']}</div></div>
+                <div class="summary-row"><div class="k">Vaccination</div><div class="v">{display_consensus['vaccine']}</div></div>
+                <div class="summary-row"><div class="k">Closure</div><div class="v">{display_consensus['closure']}</div></div>
+                <div class="summary-row"><div class="k">Testing</div><div class="v">{display_consensus['testing']}</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-        st.markdown('<div class="section-label" style="margin-top:18px;">Actions</div>', unsafe_allow_html=True)
-
-        if st.button("Apply votes to forecast", use_container_width=True):
-            set_setting("applied", "1")
-            st.rerun()
+        st.markdown('<div class="section-title">Actions</div>', unsafe_allow_html=True)
+        if not frozen:
+            if st.button("Apply votes to forecast", use_container_width=True):
+                set_setting("frozen_payload", json.dumps(live_consensus))
+                set_setting("frozen", "1")
+                set_setting("session_open", "0")
+                st.rerun()
+        else:
+            if st.button("Resume live voting", use_container_width=True):
+                set_setting("frozen", "0")
+                set_setting("frozen_payload", "")
+                set_setting("session_open", "1")
+                st.rerun()
 
         if st.button("Reset to baseline", use_container_width=True):
             clear_votes()
             set_setting("session_open", "0")
-            set_setting("applied", "0")
+            set_setting("frozen", "0")
+            set_setting("frozen_payload", "")
             st.rerun()
 
-# ──────────────────────────────────────────────
-# MAIN ROUTER
-# ──────────────────────────────────────────────
+        st.markdown('<div class="small-note" style="margin-top:10px;">The QR code points to: ' + vote_url() + '</div>', unsafe_allow_html=True)
 
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------
+# Main
+# ---------------------------------------------------------
 init_db()
-
 mode = st.query_params.get("mode", "dashboard")
 
 if mode == "vote":
