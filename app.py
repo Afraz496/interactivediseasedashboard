@@ -469,13 +469,24 @@ def build_chart(history, base_fc, base_lo, base_hi,
         hovertemplate='<b>%{x}</b><br>Forecast: %{y:,.0f}<extra></extra>',
     ))
 
-    # Vertical "today" line
-    fig.add_vline(
-        x=date_labels_hist[-1],
-        line=dict(color='rgba(255,255,255,0.1)', width=1, dash='dash'),
-        annotation_text="NOW",
-        annotation_font=dict(size=9, color='rgba(255,255,255,0.3)'),
-        annotation_position="top right",
+    # Vertical "today" line — use shapes instead of add_vline (categorical x-axis)
+    now_x = date_labels_hist[-1]
+    fig.update_layout(
+        shapes=[dict(
+            type="line",
+            xref="x", yref="paper",
+            x0=now_x, x1=now_x,
+            y0=0, y1=1,
+            line=dict(color='rgba(255,255,255,0.1)', width=1, dash='dash'),
+        )],
+        annotations=[dict(
+            xref="x", yref="paper",
+            x=now_x, y=1.01,
+            text="NOW",
+            showarrow=False,
+            font=dict(size=9, color='rgba(255,255,255,0.3)'),
+            xanchor="left",
+        )],
     )
 
     fig.update_layout(
