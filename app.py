@@ -1,4 +1,3 @@
-
 import io
 import json
 import math
@@ -20,7 +19,28 @@ from streamlit_folium import st_folium
 APP_TITLE = "Metro Vancouver Outbreak Simulator"
 DB_PATH = Path("disease_audience_state.db")
 SEED = 42
-DEFAULT_PUBLIC_URL = "https://afrazdiseasedashboard.streamlit.app/"
+DEFAULT_PUBLIC_URL = "https://afrazdiseasedashboard.streamlit.app"
+
+PLACEHOLDER_URLS = {
+    "",
+    "https://your-disease-app.streamlit.app",
+    "https://your-disease-app.streamlit.app/",
+    "https://your-demo-app.streamlit.app",
+    "https://your-demo-app.streamlit.app/",
+}
+
+
+def normalize_public_url(url: str) -> str:
+    url = (url or "").strip()
+    if not url or url in PLACEHOLDER_URLS:
+        return DEFAULT_PUBLIC_URL
+    return url.rstrip("/")
+
+
+def build_vote_url(public_url: str) -> str:
+    base = normalize_public_url(public_url)
+    return base + ("&" if "?" in base else "?") + urlencode({"mode": "vote"})
+
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🦠", layout="wide")
 
@@ -158,6 +178,7 @@ def init_db():
             created_at TEXT NOT NULL
         )
     """)
+
     defaults = {
         "accepting_votes": "1",
         "scenario_locked": "0",
@@ -166,6 +187,19 @@ def init_db():
     }
     for k, v in defaults.items():
         cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
+
+    # Force-fix stale placeholder or empty public_url already stored in SQLite
+    cur.execute("SELECT value FROM settings WHERE key='public_url'")
+    row = cur.fetchone()
+    current_public_url = row["value"] if row else ""
+    fixed_public_url = normalize_public_url(current_public_url)
+
+    cur.execute(
+        "INSERT INTO settings (key, value) VALUES (?, ?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        ("public_url", fixed_public_url)
+    )
+
     conn.commit()
     conn.close()
 
@@ -226,6 +260,7 @@ def reset_votes():
     set_setting("scenario_locked", "0")
     set_setting("last_snapshot", "")
     set_setting("accepting_votes", "1")
+    set_setting("public_url", DEFAULT_PUBLIC_URL)
 
 
 # -----------------------------
@@ -720,9 +755,14 @@ def render_dashboard():
 
     with st.sidebar:
         st.header("Presenter controls")
-        public_url = st.text_input("Public app URL", value=get_setting("public_url", DEFAULT_PUBLIC_URL))
-        if public_url != get_setting("public_url", DEFAULT_PUBLIC_URL):
-            set_setting("public_url", public_url)
+
+        saved_public_url = normalize_public_url(get_setting("public_url", DEFAULT_PUBLIC_URL))
+        public_url_input = st.text_input("Public app URL", value=saved_public_url)
+        normalized_input = normalize_public_url(public_url_input)
+
+        if normalized_input != saved_public_url:
+            set_setting("public_url", normalized_input)
+            st.rerun()
 
         accepting_votes = get_setting("accepting_votes", "1") == "1"
         st.markdown(f"Voting status: **{'OPEN' if accepting_votes else 'LOCKED'}**")
@@ -755,8 +795,8 @@ def render_dashboard():
 
         st.caption("Students scan the QR and vote. The map and charts react live.")
 
-    public_url = get_setting("public_url", DEFAULT_PUBLIC_URL).strip().rstrip("/")
-    vote_url = public_url + ("&" if "?" in public_url else "?") + urlencode({"mode": "vote"})
+    public_url = normalize_public_url(get_setting("public_url", DEFAULT_PUBLIC_URL))
+    vote_url = build_vote_url(public_url)
     qr_bytes = make_qr_image(vote_url)
 
     st.markdown("""
