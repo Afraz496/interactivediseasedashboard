@@ -20,7 +20,7 @@ from streamlit_folium import st_folium
 APP_TITLE = "Metro Vancouver Outbreak Simulator"
 DB_PATH = Path("disease_audience_state.db")
 SEED = 42
-DEFAULT_PUBLIC_URL = "https://your-disease-app.streamlit.app"
+DEFAULT_PUBLIC_URL = "https://afrazdiseasedashboard.streamlit.app/"
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🦠", layout="wide")
 
