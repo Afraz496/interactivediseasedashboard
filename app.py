@@ -268,6 +268,42 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
 .summary-row .k {color: var(--muted) !important;}
 .summary-row .v {font-weight: 900;}
 
+.status-pill {
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    padding:10px 14px;
+    border-radius:999px;
+    font-weight:900;
+    font-size:0.98rem;
+    margin-top:8px;
+    margin-bottom:10px;
+    border:1px solid rgba(255,255,255,0.18);
+}
+.status-green {
+    background: rgba(34,197,94,0.16);
+    color: #b9ffd1 !important;
+    border-color: rgba(34,197,94,0.35);
+}
+.status-yellow {
+    background: rgba(245,158,11,0.16);
+    color: #ffe1a8 !important;
+    border-color: rgba(245,158,11,0.35);
+}
+.status-red {
+    background: rgba(239,68,68,0.16);
+    color: #ffc2c2 !important;
+    border-color: rgba(239,68,68,0.35);
+}
+
+.override-box {
+    background: rgba(8,24,51,0.85);
+    border:1px solid rgba(72,125,193,0.35);
+    border-radius:16px;
+    padding:14px;
+    margin-top:10px;
+}
+
 [data-testid="stButton"] > button,
 [data-testid="stDownloadButton"] > button,
 div[data-testid="stFormSubmitButton"] > button {
@@ -366,6 +402,7 @@ def init_db():
         "frozen": "0",
         "frozen_payload": "",
         "public_url": DEFAULT_PUBLIC_URL,
+        "presenter_override": "1.00",
     }
     for k, v in defaults.items():
         cur.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (k, v))
@@ -564,6 +601,10 @@ def apply_interventions(base_fc, base_lo, base_hi, mult: float):
     return cur_fc, cur_lo, cur_hi
 
 
+def apply_presenter_override(fc, lo, hi, override_mult: float):
+    return fc * override_mult, lo * override_mult, hi * override_mult
+
+
 def metrics_from(fc: np.ndarray) -> dict:
     peak_val = int(fc.max())
     peak_week = int(fc.argmax()) + 1
@@ -592,6 +633,26 @@ def driver_table(consensus: dict) -> pd.DataFrame:
         ("Testing", (1 - TESTING_EFFECT[consensus["testing"]]) * 100),
     ]
     return pd.DataFrame(rows, columns=["driver", "reduction_pct"]).sort_values("reduction_pct")
+
+
+def severity_status(cur_m: dict):
+    if cur_m["peak_val"] >= 2200 or cur_m["week1"] >= 1800 or cur_m["total"] >= 18000:
+        return {
+            "icon": "🚨",
+            "label": "Too many cases",
+            "css": "status-red",
+        }
+    if "↓" in cur_m["trend"]:
+        return {
+            "icon": "✅",
+            "label": "Declining",
+            "css": "status-green",
+        }
+    return {
+        "icon": "⚠️",
+        "label": "Cases rising",
+        "css": "status-yellow",
+    }
 
 
 # ---------------------------------------------------------
@@ -902,6 +963,7 @@ def render_dashboard():
     session_open = get_setting("session_open", "0") == "1"
     frozen = get_setting("frozen", "0") == "1"
     frozen_payload = get_setting("frozen_payload", "")
+    presenter_override = float(get_setting("presenter_override", "1.00"))
 
     if session_open:
         display_consensus = live_consensus.copy()
@@ -921,12 +983,26 @@ def render_dashboard():
 
     history = generate_historical()
     base_fc, base_lo, base_hi = ensemble_forecast(history, FC_WEEKS)
-    multiplier = compute_multiplier(display_consensus)
-    cur_fc, cur_lo, cur_hi = apply_interventions(base_fc.copy(), base_lo.copy(), base_hi.copy(), multiplier)
+
+    intervention_multiplier = compute_multiplier(display_consensus)
+    cur_fc, cur_lo, cur_hi = apply_interventions(
+        base_fc.copy(),
+        base_lo.copy(),
+        base_hi.copy(),
+        intervention_multiplier,
+    )
+
+    cur_fc, cur_lo, cur_hi = apply_presenter_override(
+        cur_fc,
+        cur_lo,
+        cur_hi,
+        presenter_override,
+    )
 
     base_m = metrics_from(base_fc)
     cur_m = metrics_from(cur_fc)
     drivers_df = driver_table(display_consensus)
+    status = severity_status(cur_m)
 
     hist_dates = [datetime(2024, 1, 7) + timedelta(weeks=i) for i in range(HIST_WEEKS)]
     fc_dates = [hist_dates[-1] + timedelta(weeks=i + 1) for i in range(FC_WEEKS)]
@@ -940,7 +1016,8 @@ def render_dashboard():
     peak_delta = cur_m["peak_val"] - base_m["peak_val"]
     total_delta = cur_m["total"] - base_m["total"]
     trend_color = "#22c55e" if "↓" in cur_m["trend"] else "#ef4444"
-    mult_pct = round((1 - multiplier) * 100, 1)
+    intervention_pct = round((1 - intervention_multiplier) * 100, 1)
+    override_pct = round((presenter_override - 1.0) * 100, 1)
 
     st.markdown(
         f"""
@@ -948,6 +1025,7 @@ def render_dashboard():
             <div>
                 <div class="hero-title"><span style="color:#ef4444;">•</span> Metro Vancouver COVID Forecaster</div>
                 <div class="hero-sub">ML time-series ensemble · Holt-Winters + linear trend · <b>{'LIVE VOTING OPEN' if session_open else ('FROZEN SCENARIO' if frozen else 'SESSION CLOSED')}</b> · {len(votes_df)} votes cast</div>
+                <div class="status-pill {status['css']}">{status['icon']} {status['label']}</div>
             </div>
             <div class="hero-pill">Presenter dashboard</div>
         </div>
@@ -969,14 +1047,14 @@ def render_dashboard():
                 <div class="metric-sub">{'↓' if total_delta < 0 else '↑' if total_delta > 0 else '—'} {abs(total_delta):,} vs baseline</div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Forecast trend</div>
-                <div class="metric-value" style="font-size:1.7rem;color:{trend_color}">{cur_m['trend']}</div>
+                <div class="metric-label">Forecast status</div>
+                <div class="metric-value" style="font-size:1.55rem;color:{trend_color}">{status['icon']} {status['label']}</div>
                 <div class="metric-sub">{cur_m['trend_pct']}% over forecast horizon</div>
             </div>
             <div class="metric-card">
-                <div class="metric-label">Intervention effect</div>
-                <div class="metric-value">-{mult_pct}%</div>
-                <div class="metric-sub">Combined class multiplier: ×{multiplier:.2f}</div>
+                <div class="metric-label">Intervention + override</div>
+                <div class="metric-value">{override_pct:+.0f}%</div>
+                <div class="metric-sub">Votes: {intervention_pct:+.1f}% impact · Presenter override: ×{presenter_override:.2f}</div>
             </div>
         </div>
         """,
@@ -1006,7 +1084,7 @@ def render_dashboard():
                 build_hospital_map(
                     hosp_next,
                     title="Predicted hospital map · next week",
-                    subtitle=f"Live class votes shift the next-week prediction to {next_week_total:,} cases.",
+                    subtitle=f"Live votes and presenter override shift the next-week prediction to {next_week_total:,} cases.",
                 ),
                 use_container_width=True,
                 config={"displayModeBar": False},
@@ -1046,18 +1124,18 @@ def render_dashboard():
                     <div class="compare-row">Multiplier <span>×1.00</span></div>
                 </div>
                 <div class="compare-card after-card">
-                    <div class="compare-label">After votes (current)</div>
+                    <div class="compare-label">After votes + presenter override</div>
                     <div class="compare-row">Peak weekly cases <span>{cur_m['peak_val']:,}</span></div>
                     <div class="compare-row">12-week total <span>{cur_m['total']:,}</span></div>
                     <div class="compare-row">Week 1 prediction <span>{cur_m['week1']:,}</span></div>
-                    <div class="compare-row">Multiplier <span>×{multiplier:.2f}</span></div>
+                    <div class="compare-row">Combined multiplier <span>×{(intervention_multiplier * presenter_override):.2f}</span></div>
                 </div>
             </div>
             """,
             unsafe_allow_html=True,
         )
         st.markdown(
-            '<div class="banner-note"><b>How the ML model works:</b> the app first learns the outbreak shape from historical weekly cases using a weighted ensemble of Holt-Winters exponential smoothing and a linear trend model. Then the current class votes act like policy parameters, reducing the baseline forecast through a combined multiplier that ramps in over the first four weeks.</div>',
+            '<div class="banner-note"><b>How the ML model works:</b> the app first learns the outbreak shape from historical weekly cases using a weighted ensemble of Holt-Winters exponential smoothing and a linear trend model. Then the current class votes act like policy parameters, reducing the baseline forecast through a combined multiplier that ramps in over the first four weeks. The presenter can then apply an additional scenario override to make the outbreak more severe or more controlled for teaching purposes.</div>',
             unsafe_allow_html=True,
         )
 
@@ -1101,6 +1179,29 @@ def render_dashboard():
             unsafe_allow_html=True,
         )
 
+        st.markdown('<div class="section-title">Presenter override</div>', unsafe_allow_html=True)
+        override_value = st.slider(
+            "Scenario severity multiplier",
+            min_value=0.50,
+            max_value=2.50,
+            value=float(get_setting("presenter_override", "1.00")),
+            step=0.05,
+            help="1.00 = no override. Above 1.00 makes the outbreak worse. Below 1.00 softens it.",
+        )
+        if abs(override_value - presenter_override) > 1e-9:
+            set_setting("presenter_override", f"{override_value:.2f}")
+            st.rerun()
+
+        st.markdown(
+            f"""
+            <div class="override-box">
+                <div class="summary-row"><div class="k">Override multiplier</div><div class="v">×{override_value:.2f}</div></div>
+                <div class="summary-row"><div class="k">Effect vs neutral</div><div class="v">{(override_value - 1.0) * 100:+.0f}%</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         st.markdown('<div class="section-title">Actions</div>', unsafe_allow_html=True)
         if session_open:
             if st.button("Freeze current live scenario", use_container_width=True):
@@ -1115,11 +1216,16 @@ def render_dashboard():
                 set_setting("session_open", "1")
                 st.rerun()
 
+        if st.button("Reset presenter override to neutral", use_container_width=True):
+            set_setting("presenter_override", "1.00")
+            st.rerun()
+
         if st.button("Reset to baseline", use_container_width=True):
             clear_votes()
             set_setting("session_open", "0")
             set_setting("frozen", "0")
             set_setting("frozen_payload", "")
+            set_setting("presenter_override", "1.00")
             st.rerun()
 
         st.markdown('<div class="small-note" style="margin-top:10px;">The QR code points to: ' + vote_url() + '</div>', unsafe_allow_html=True)
