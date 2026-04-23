@@ -818,7 +818,6 @@ def build_hospital_map(df: pd.DataFrame, title: str, subtitle: str):
                 size=sizes,
                 color=colors,
                 opacity=0.85,
-                line=dict(width=1.8, color="#ffffff"),
             ),
             hovertemplate="<b>%{text}</b><br>Cases: %{customdata:,}<br>Risk: %{meta}<extra></extra>",
             customdata=df["cases"],
