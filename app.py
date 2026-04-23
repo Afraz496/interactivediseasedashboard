@@ -170,15 +170,17 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
 
 .traffic-grid {
     display:grid;
-    grid-template-columns: repeat(4, minmax(0,1fr));
-    gap:10px;
+    grid-template-columns: repeat(2, minmax(0,1fr));
+    gap:12px;
+    align-items:start;
 }
 .traffic-card {
     background: rgba(8,24,51,0.86);
     border: 1px solid rgba(72,125,193,0.33);
     border-radius: 16px;
-    padding: 14px 12px;
+    padding: 16px 14px;
     text-align:center;
+    min-height: 110px;
 }
 .traffic-dot {
     width: 16px;
@@ -219,20 +221,22 @@ h1, h2, h3, h4, h5, h6, p, label, div, span {
 .compare-label {
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    font-size: 0.82rem;
+    font-size: 1.35rem;
     font-weight: 900;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
+    line-height: 1.2;
 }
 .compare-row {
     display:flex;
     justify-content:space-between;
     gap:10px;
-    padding:5px 0;
-    font-size: 0.98rem;
+    padding:7px 0;
+    font-size: 1.05rem;
     color: var(--muted) !important;
 }
 .compare-row span {
     font-weight: 900;
+    font-size: 1.08rem;
     color: var(--text) !important;
 }
 
@@ -355,7 +359,7 @@ div[data-testid="stFormSubmitButton"] > button:hover {
 @media (max-width: 1100px) {
     .metric-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
     .compare-strip { grid-template-columns: 1fr; }
-    .traffic-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .traffic-grid { grid-template-columns: 1fr; }
     .hero { flex-direction: column; }
 }
 </style>
@@ -823,13 +827,18 @@ def build_forecast_chart(history, base_fc, cur_fc, cur_lo, cur_hi, hist_dates, f
 
 
 def build_driver_chart(drivers_df: pd.DataFrame):
+    df = drivers_df.copy().sort_values("reduction_pct", ascending=True)
+
+    max_val = float(df["reduction_pct"].max()) if len(df) else 0.0
+    axis_max = max(5.0, max_val * 1.25)
+
     fig = go.Figure(
         go.Bar(
-            x=drivers_df["reduction_pct"],
-            y=drivers_df["driver"],
+            x=df["reduction_pct"],
+            y=df["driver"],
             orientation="h",
             marker=dict(color="#43b4ff"),
-            text=[f"-{x:.0f}%" for x in drivers_df["reduction_pct"]],
+            text=[f"-{x:.0f}%" for x in df["reduction_pct"]],
             textposition="outside",
         )
     )
@@ -837,9 +846,15 @@ def build_driver_chart(drivers_df: pd.DataFrame):
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         margin=dict(l=8, r=8, t=10, b=8),
-        height=280,
+        height=220,
         font=dict(color="#eef4ff", size=13),
-        xaxis=dict(title="Reduction versus no intervention", gridcolor="rgba(255,255,255,0.06)", ticksuffix="%"),
+        xaxis=dict(
+            title="Reduction versus no intervention",
+            gridcolor="rgba(255,255,255,0.06)",
+            ticksuffix="%",
+            range=[0, axis_max],
+            zeroline=False,
+        ),
         yaxis=dict(showgrid=False),
     )
     return fig
@@ -1091,7 +1106,7 @@ def render_dashboard():
             )
 
         st.markdown('<div class="section-title">Metro hospital lights and model drivers</div>', unsafe_allow_html=True)
-        m1, m2 = st.columns([1.45, 1.0], gap="large")
+        m1, m2 = st.columns([1.7, 1.0], gap="medium")
         with m1:
             traffic_html = '<div class="traffic-grid">'
             for _, row in hosp_next.sort_values("cases", ascending=False).head(8).iterrows():
