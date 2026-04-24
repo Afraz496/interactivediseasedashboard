@@ -534,11 +534,11 @@ def make_qr(url: str) -> bytes:
 # ---------------------------------------------------------
 # Forecast model
 # ---------------------------------------------------------
-MASK_EFFECT     = {"None (0%)": 1.00, "Low (25%)": 0.92, "Medium (60%)": 0.82, "High (90%)": 0.70}
-DISTANCE_EFFECT = {"None": 1.00, "Mild": 0.93, "Moderate": 0.84, "Strict": 0.74}
-VACCINE_EFFECT  = {"0%": 1.00, "30%": 0.90, "60%": 0.78, "90%": 0.62}
-CLOSURE_EFFECT  = {"Open": 1.00, "Partial": 0.88, "Full": 0.76}
-TESTING_EFFECT  = {"Low": 1.00, "Moderate": 0.96, "High": 0.91}
+MASK_EFFECT     = {"None (0%)": 1.00, "Low (25%)": 0.85, "Medium (60%)": 0.68, "High (90%)": 0.50}
+DISTANCE_EFFECT = {"None": 1.00, "Mild": 0.85, "Moderate": 0.70, "Strict": 0.55}
+VACCINE_EFFECT  = {"0%": 1.00, "30%": 0.82, "60%": 0.63, "90%": 0.42}
+CLOSURE_EFFECT  = {"Open": 1.00, "Partial": 0.75, "Full": 0.55}
+TESTING_EFFECT  = {"Low": 1.00, "Moderate": 0.88, "High": 0.76}
 
 HIST_WEEKS = 26
 FC_WEEKS   = 12
@@ -615,9 +615,9 @@ def compute_multiplier(consensus: dict) -> float:
 
 
 def apply_interventions(base_fc, base_lo, base_hi, mult):
-    ramp_len = min(4, len(base_fc))
-    full     = np.full(len(base_fc), mult)
-    full[:ramp_len] = np.linspace(1.0, mult, ramp_len)
+    # Apply multiplier immediately from week 1 — no ramp — so votes visibly
+    # move the very next week prediction and hospital map colours.
+    full = np.full(len(base_fc), mult)
     return base_fc * full, base_lo * full, base_hi * full
 
 
