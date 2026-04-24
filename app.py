@@ -672,12 +672,18 @@ METRO_HOSPITALS = pd.DataFrame({
 
 def distribute_cases(total_cases: float, base_df: pd.DataFrame, seed: int = SEED) -> pd.DataFrame:
     """
-    FIX: risk colour thresholds now scale dynamically with total_cases so
-    hospital circles actually change colour when votes / override shift the forecast.
+    Risk colours use ABSOLUTE per-hospital thresholds so they genuinely
+    change as the multiplier / votes shift total_cases up or down.
+
+    Thresholds (cases per hospital):
+      Green  : < 60   cases  — manageable
+      Yellow : 60–120 cases  — elevated
+      Red    : > 120  cases  — high pressure
     """
     rng     = np.random.default_rng(seed)
     weights = base_df["weight"].to_numpy(dtype=float)
     weights = weights / weights.sum()
+    # Small deterministic jitter so hospitals don't all land on exact same share
     jitter  = rng.uniform(0.94, 1.07, len(base_df))
     raw     = total_cases * weights * jitter
     raw     = raw / raw.sum() * total_cases
@@ -685,21 +691,16 @@ def distribute_cases(total_cases: float, base_df: pd.DataFrame, seed: int = SEED
     out          = base_df.copy()
     out["cases"] = np.maximum(10, raw).round().astype(int)
 
-    # Relative risk within this prediction's distribution
-    max_cases = max(out["cases"].max(), 1)
-    out["risk"] = pd.cut(
-        out["cases"] / max_cases,
-        bins=[-np.inf, 0.35, 0.68, np.inf],
-        labels=["Green", "Yellow", "Red"],
-    ).astype(str)
+    # Absolute thresholds — these are what actually make colours change
+    def _risk(n):
+        if n < 60:
+            return "Green"
+        elif n < 120:
+            return "Yellow"
+        else:
+            return "Red"
 
-    # Absolute burden upgrade: high case totals push colours toward red
-    if total_cases > 2000:
-        upgrade = {"Green": "Yellow", "Yellow": "Red", "Red": "Red"}
-        out["risk"] = out["risk"].map(upgrade)
-    elif total_cases > 1000:
-        out.loc[out["risk"] == "Yellow", "risk"] = "Red"
-
+    out["risk"] = out["cases"].apply(_risk)
     return out
 
 
